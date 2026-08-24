@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --bmb-midnight: #1B1033;       /* deep navy-plum */
+    --bmb-midnight-2: #2A1848;
+    --bmb-midnight-3: #3E2359;
+    --bmb-wine: #5B1A3A;            /* burgundy / wine */
+    --bmb-wine-2: #7A2247;
+    --bmb-rose: #C94F7C;            /* rich pink / fuchsia */
+    --bmb-rose-gold: #B76E79;       /* rose gold */
+    --bmb-copper: #C48B76;          /* copper metallic */
+    --bmb-champagne: #E8C7A0;       /* warm champagne */
+    --bmb-cream: #FBF7F2;
+    --bmb-bg: #FBF7F2;
+    --bmb-text: #221029;
+    --bmb-muted: #6B5A6E;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+    margin: 0;
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--bmb-bg);
+    color: var(--bmb-text);
+}
+
+.font-display {
+    font-family: 'Fraunces', 'Cabinet Grotesk', 'IBM Plex Sans', serif;
+    letter-spacing: -0.02em;
+}
+
+.overline {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-weight: 600;
+    color: var(--bmb-wine);
+}
+
+.thin-scroll::-webkit-scrollbar { width: 6px; }
+.thin-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
+
+.bmb-gold-fill {
+    background: linear-gradient(90deg, var(--bmb-rose-gold), var(--bmb-copper));
+}
+
+[data-slot="progress-indicator"],
+.bmb-progress > div {
+    background: linear-gradient(90deg, var(--bmb-rose-gold), var(--bmb-copper)) !important;
+}
+
+.bmb-hero-grid {
+    background-image:
+        radial-gradient(1200px 500px at 80% -10%, rgba(201, 79, 124, 0.28), transparent 60%),
+        radial-gradient(900px 500px at 10% 100%, rgba(91, 26, 58, 0.55), transparent 60%),
+        linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+    background-size: auto, auto, 44px 44px, 44px 44px;
+}
+
+.bmb-card {
+    background: #FFFFFF;
+    border: 1px solid #EBDCE3;
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(27, 16, 51, 0.05);
+    transition: box-shadow 200ms ease, transform 200ms ease;
+}
+.bmb-card:hover { box-shadow: 0 10px 28px rgba(91, 26, 58, 0.10); }
+
+.bmb-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 9999px;
+    font-size: 12px; font-weight: 500;
+}
+
+@layer base {
+    :root {
+        --background: 34 40% 97%;
+        --foreground: 300 40% 12%;
+        --card: 0 0% 100%;
+        --card-foreground: 300 40% 12%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 300 40% 12%;
+        --primary: 264 51% 13%;
+        --primary-foreground: 34 40% 97%;
+        --secondary: 340 20% 96%;
+        --secondary-foreground: 300 40% 12%;
+        --muted: 340 20% 96%;
+        --muted-foreground: 290 8% 42%;
+        --accent: 350 30% 57%;
+        --accent-foreground: 264 51% 13%;
+        --destructive: 0 74% 52%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 340 20% 90%;
+        --input: 340 20% 90%;
+        --ring: 350 30% 57%;
+        --radius: 0.75rem;
+    }
+}
+
+@layer base {
+    * { @apply border-border; }
+    body { @apply bg-background text-foreground; }
+    h1, h2, h3, h4 { @apply font-display; }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] { display: contents !important; }
+    [data-debug-wrapper="true"] > * {
+        margin-left: inherit; margin-right: inherit; margin-top: inherit; margin-bottom: inherit;
+        padding-left: inherit; padding-right: inherit; padding-top: inherit; padding-bottom: inherit;
+        column-gap: inherit; row-gap: inherit; gap: inherit;
+        border-left-width: inherit; border-right-width: inherit; border-top-width: inherit; border-bottom-width: inherit;
+        border-left-style: inherit; border-right-style: inherit; border-top-style: inherit; border-bottom-style: inherit;
+        border-left-color: inherit; border-right-color: inherit; border-top-color: inherit; border-bottom-color: inherit;
+    }
+}

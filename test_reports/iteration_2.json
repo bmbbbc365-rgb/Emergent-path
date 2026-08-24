@@ -1,0 +1,26 @@
+{
+  "summary": "Targeted retest of the iteration_1 CRITICAL/HIGH/MEDIUM fixes only (per request). Backend: added /app/backend/tests/test_retest_bridge.py — GET /api/bridge/suggestions now returns 4 unique non-empty strings for the fully-seeded owner (>=3 requirement met, fallbacks appended), and /api/dashboard/summary regression passes (2/2 pytest). Frontend (Playwright, owner login heatherprejean7325@gmail.com): (1) Bridge streaming fixed — sent 2 messages, zero doubled consecutive words in the streamed text; action pills = 3 per reply and each pill label/route is unique (no duplicate pills; previously 6 per reply). (2) Bridge markdown now clean — no '###' headings, no '**bold**' asterisks, no raw '- ' bullets; bullets correctly rendered as '• '. (3) Bridge suggestion chips render for the owner despite 6 existing history messages (4 chips before and after streaming, >=3 required). (4) Library CourseDetail — clicked lesson 'Practice: replay a hard call' in Decision-Making Framework, clicked complete-lesson-btn: button disappears and the active lesson pane immediately shows the green 'Completed' badge plus sidebar check, no reload needed. (5) Regression — owner email/password login works, dashboard renders 13 section cards + 16 sidebar nav items, deep section routes (/app/section/requirements, documents, independent-living, identity, health-hub, benefits-hub, home-hub, employment-record, employment-readiness, support-circle, life-skills) all render their own H1 and content, /app/library renders 8 course cards. No console errors other than the expected pre-login 401 from /api/auth/me.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_retest_bridge.py",
+    "/app/backend/tests/backend_test.py"
+  ],
+  "action_items": [
+    "No new issues from this retest. Remaining deferred (unchanged from iteration_1, explicitly out of scope this pass): window.prompt in Requirements.logPayment, native date/datetime inputs instead of shadcn Calendar, missing data-testid on dialog Save buttons + silent HTML5 validation leaving the modal overlay intercepting clicks, CORS wildcard + allow_credentials, untyped dict bodies in generic crud_endpoints, full-replace PUT semantics on emergency-profile/personal profile."
+  ],
+  "critical_code_review_comments": [
+    "BridgeChat.jsx setMessages updater is now pure ({...last, content: last.content + chunk}) — StrictMode-safe. Note the catch() branch (lines 97-103) still mutates `last.content` in place for the error fallback; harmless today but make it immutable too for consistency.",
+    "Library.jsx load() correctly re-resolves `active` from the freshly loaded lessons; behaviour verified in the UI.",
+    "bridge_suggestions caps top-up at 4 items then slices to 6 — fine, but the fallback loop's `if len(suggestions) >= 4: break` means a fully-empty participant can hit 6 context suggestions with zero fallbacks; intended, no action.",
+    "parseActions() de-dupes by label|route — a reply that intentionally links the same route twice with different labels still yields two pills (correct)."
+  ],
+  "updated_files": ["/app/backend/tests/test_retest_bridge.py (new)"],
+  "success_rate": {"backend": "100% (2/2 targeted pytest)", "frontend": "100% of retested items (4/4 fixed issues verified) + login/dashboard/deep-page regression pass"},
+  "seed_data_creation": "No new seed data. One additional owner lesson was marked complete during the completion test (education now 3/22 lessons, 14%).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "Owner: heatherprejean7325@gmail.com / Blueprint2026! (valid).",
+  "context_for_next_testing_agent": "All iteration_1 CRITICAL/HIGH/MEDIUM correctness bugs are fixed and verified. Deep section routes use /app/section/<key> with keys: requirements, documents, independent-living, recovery/wellness & digital-life keys differ from the label slugs (use the sidebar [data-testid^=\"nav-\"] links or dashboard [data-testid^=\"section-card-\"] rather than guessing slugs). Library course cards are data-testid=`course-<id>`, lessons `lesson-<id>`. Bridge raw SSE body cannot be read via Playwright response.text() (stream consumed) — validate pill uniqueness from the DOM instead. Remaining open items are the deferred UX-polish list in action_items.",
+  "rca_of_the_issue": "N/A — retest only; all previously reported root causes (impure setMessages updater under StrictMode, unstripped markdown, suggestion gating on messages.length===0, stale `active` lesson in CourseDetail.load(), suggestion list without fallbacks) are resolved in code and confirmed at runtime."
+}

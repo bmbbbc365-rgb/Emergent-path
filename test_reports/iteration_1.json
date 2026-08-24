@@ -1,0 +1,66 @@
+{
+  "summary": "Full backend + frontend E2E test of A Path Forward / Build My Blueprint deep architecture. Created pytest suite (58 tests, 100% passing) covering auth (login/register/me/logout/google contract/401 scoping on 22 endpoints), dashboard summary, Requirements CRUD+payments, Health (medications/conditions/appointments/wellness + Emergency Profile qr_slug), Benefits + 7 scenarios, Housing/Utilities, Employment (jobs/income/applications/resumes), Personal profile, Education (6 categories, 8 courses, course detail, lesson-progress), Documents (upload/download/rename/soft-delete via Emergent object storage), Sharing + cross-user isolation, Bridge AI (suggestions, SSE stream via GPT-5.6 Terra, history) and confirmed /api/hub-items is removed. Frontend Playwright: landing, owner login, dashboard tiles (13 section cards), all 6 deep pages + all tabs, requirements add/pay/delete, medication add/delete, emergency profile save, benefits scenarios, utility add, employment application add, document upload via UI, privacy page, 6 generic sections, library course -> lesson complete, Bridge drawer streaming + clickable action pills, mobile sidebar (390px), logout. Palette grep: no leftover #0A192F / #D4AF37. Zero console/page errors anywhere.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/bridge/suggestions", "issue": "Spec requires 3-6 suggestions; for the fully-seeded owner only 2 are returned ('required items' + 'fees owed') because every other branch is gated on empty data (no housing / no jobs / no benefits / no meds). Add always-available fallbacks so the list is topped up to >= 3."},
+      {"endpoint": "PUT /api/health/emergency-profile and PUT /api/profile/personal", "issue": "Full-replace semantics: any field omitted from the body is silently reset to the Pydantic default (nulls/empty lists). A partial save from any future/partial client will wipe blood_type, allergies, summaries, wins. Consider exclude_unset merge semantics."},
+      {"endpoint": "CORS middleware", "issue": "allow_origins defaults to ['*'] together with allow_credentials=True — browsers reject credentialed requests with wildcard origin. Cookie auth only works today because the frontend also sends a Bearer token. Set CORS_ORIGINS explicitly."},
+      {"endpoint": "POST /api/{requirements,benefits,health/*,housing/*,employment/*}", "issue": "Generic crud_endpoints accepts an untyped `dict` body with no Pydantic validation — no type/range checks (e.g. amount_paid can be a string, scheduled_at can be any text) and silent field dropping instead of a 4xx."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "BridgeChat.jsx (streaming)", "issue": "CRITICAL: every streamed token is rendered TWICE ('YourYour required required check check-ins ins are are in in ** **ReleaseRelease Requirements****'). Root cause: the setMessages updater at lines 74-79 MUTATES the existing message object (`last.content += chunk`) while returning a shallow array copy. React 18 StrictMode (enabled in index.js) invokes updaters twice, so each chunk is appended twice. Duplicated markdown links also produce duplicate action pills (12 pills for 2 replies). Fix: replace the last message immutably, e.g. `copy[copy.length-1] = {...last, content: last.content + chunk}`.", "selector": "[data-testid=\"bridge-drawer\"]", "priority": "CRITICAL"},
+      {"component": "BridgeChat.jsx (markdown)", "issue": "Assistant replies are rendered as raw text: '### Next steps' shows the literal hashes, '**bold**' shows asterisks, and after parseActions() strips the [Label](/app/...) links the leftover markdown bullets render as orphan '-' characters on their own lines. Either render markdown or strip heading/bullet/emphasis markers when extracting actions.", "selector": "[data-testid=\"bridge-drawer\"]", "priority": "HIGH"},
+      {"component": "BridgeChat.jsx (suggestions)", "issue": "Context-aware suggestion buttons are gated on `messages.length === 0`, so once the owner has any Bridge history the suggestion chips never appear again — the seeded/demo owner therefore never sees them. Consider showing them whenever the composer is empty or after the latest reply.", "selector": "[data-testid^=\"bridge-suggestion-\"]", "priority": "MEDIUM"},
+      {"component": "Library.jsx CourseDetail", "issue": "After clicking 'Mark lesson complete' the progress persists (sidebar check + '1/2 lessons' on the card) but the lesson pane keeps showing the 'Mark lesson complete' button instead of the 'Completed' badge, because load() only refreshes `active` when it is null (stale object). User can click complete repeatedly with no feedback change.", "selector": "[data-testid=\"complete-lesson-btn\"]", "priority": "MEDIUM"},
+      {"component": "Requirements.jsx logPayment", "issue": "Logging a payment uses the native browser window.prompt() instead of a shadcn Dialog — off-brand, unstyled, no validation/currency formatting, and blocked entirely in some embedded browsers.", "selector": "[data-testid^=\"pay-req-\"]", "priority": "MEDIUM"},
+      {"component": "Add-item dialogs (Employment applications / jobs / income / resumes, Health, Housing)", "issue": "Dialog Save buttons and most dialog fields have no data-testid (only the trigger buttons do), forcing role/nth-child selectors. Also: when a required field is empty, HTML5 validation silently blocks submit and the modal overlay stays mounted, which then intercepts every click on the rest of the app until the dialog is dismissed — no inline validation message is shown.", "selector": "div[role=\"dialog\"] button[type=\"submit\"]", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Bridge chat streaming", "issue": "Duplicated text and duplicated navigation pills reach the user (see ui_bugs #1). The backend SSE stream itself is clean — verified via curl/pytest that the raw stream contains a single, well-formed reply with [Label](/app/route) links.", "affected_selectors": ["[data-testid=\"bridge-send-btn\"]", "[data-testid^=\"bridge-action-\"]"]},
+      {"flow": "Lesson completion", "issue": "POST /api/education/lesson-progress succeeds and the library card progress updates, but the active-lesson pane state is stale (see ui_bugs #4).", "affected_selectors": ["[data-testid=\"complete-lesson-btn\"]"]}
+    ],
+    "design_issues": [
+      {"screen": "Date/time inputs across all deep pages", "issues": ["Native browser pickers are used (<input type=\"date\"> in Requirements 'Due', Emergency Profile 'Date of birth', Employment 'Applied'; <input type=\"datetime-local\"> for appointments) instead of the shadcn Calendar/Popover component — inconsistent with the rest of the design system and inconsistent across browsers."]},
+      {"screen": "Identity & Confidence", "issues": ["The 'Save profile' action sits in a bottom bar that visually collides with the fixed 'Your journey. Your information. You control sharing.' footer strip in the sidebar column at 1080p; add bottom padding to the scroll container."]},
+      {"screen": "Bridge drawer", "issues": ["Streamed reply bubble shows raw markdown syntax and stray '-' bullets (see ui_bugs #2), which reads as broken output to a re-entry participant."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/conftest.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "FIX (critical): BridgeChat.jsx lines 74-79 — make the setMessages updater pure (replace the last message object immutably) to stop the StrictMode double-append that duplicates every streamed token and every action pill.",
+    "Render/strip markdown in Bridge replies: handle ###/**bold**/bullets, and remove the empty '- ' lines left behind after extracting [Label](/app/route) links.",
+    "Show Bridge suggestion chips even when history exists (or after the latest assistant reply).",
+    "Top up /api/bridge/suggestions to always return >= 3 items (add generic fallbacks) — the seeded owner currently gets only 2.",
+    "Library CourseDetail: after complete(), re-resolve `active` from the reloaded course so the pane switches to the 'Completed' badge.",
+    "Replace window.prompt() in Requirements.logPayment with a styled shadcn dialog with amount validation.",
+    "Add data-testid to all dialog Save/submit buttons and dialog inputs; show inline validation instead of a silently-blocking HTML5 submit that leaves the modal overlay intercepting clicks.",
+    "Swap native date/datetime inputs for the shadcn Calendar component.",
+    "Set CORS_ORIGINS explicitly (wildcard + allow_credentials is invalid) and add Pydantic models to the generic crud_endpoints bodies."
+  ],
+  "critical_code_review_comments": [
+    "BridgeChat.jsx: state updater mutates existing state objects — impure reducer, breaks under React 18 StrictMode/concurrent rendering. This is the root cause of the visible token duplication.",
+    "App.js DeepOrGeneric() reads window.location.pathname instead of useParams()/useLocation() — works today but bypasses the router and will break with any future route nesting or transition.",
+    "server.py is 1213 lines and mixes auth, 15 resource groups, storage, education and the LLM layer; split into routers (auth, health, benefits, employment, education, bridge) and a seed module.",
+    "crud_endpoints takes raw dict bodies — no Pydantic validation and no 422 on bad types; also PATCH returns find_one without the user_id filter (it re-queries by id only, harmless today because the update was scoped, but tighten it).",
+    "seed_participant() guards only on tasks count, so a user whose tasks were all deleted would be re-seeded with duplicate requirements/health/housing records.",
+    "Storage calls (requests.put/get) are synchronous inside async endpoints — they block the event loop on large uploads/downloads; wrap in run_in_executor or use httpx.AsyncClient."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new)",
+    "/app/backend/tests/conftest.py (new)"
+  ],
+  "success_rate": {"backend": "100% (58/58 pytest)", "frontend": "~85% (all navigation/CRUD flows pass; Bridge rendering + lesson-pane refresh defective)"},
+  "seed_data_creation": "No permanent seed data added. All test artifacts were cleaned up (TEST_ requirement, TEST_Ibuprofen medication, TEST_Provider utility, TEST_Company application, test_ui.txt document, TEST_ sharing rule). Two throwaway registered accounts remain (test_<hex>@example.com / TestPass123!) from register + cross-user-isolation tests. Owner emergency profile and community_service amount_paid were restored to their seeded values. Note: lesson_progress now has 2 completed lessons for the owner (education pct ~9%) from the education/library tests.",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "Owner: heatherprejean7325@gmail.com / Blueprint2026! (from /app/memory/test_credentials.md — present and valid).",
+  "context_for_next_testing_agent": "pytest suite lives at /app/backend/tests/ (conftest.py + backend_test.py); run `cd /app/backend && python -m pytest tests/ -q` (pytest.ini forces -n 2 --dist loadscope; use -n 0 for serial). All 58 tests green as of this iteration. Do NOT use .test TLDs in emails — EmailStr rejects reserved TLDs; use @example.com. Bridge SSE encodes newlines as <NL>. The only unverified area is live Google OAuth (contract-tested only: bogus session_id -> 401). After the BridgeChat fix, re-run the Bridge drawer test and assert the streamed text has no doubled tokens and that action pill count matches the number of unique links.",
+  "rca_of_the_issue": "Bridge token duplication: index.js wraps the app in React.StrictMode, which double-invokes state updater functions in development. BridgeChat.send() mutates the last message in place (`last.content += chunk`) inside the updater, so each SSE chunk is appended twice, producing doubled words and doubled markdown links (hence 12 action pills for 2 replies). Backend stream verified clean via pytest/curl. Fix by returning a new message object rather than mutating. Secondary: Library CourseDetail keeps a stale `active` lesson object because load() only initialises `active` when it is falsy, so completing a lesson never flips the button to the 'Completed' badge."
+}

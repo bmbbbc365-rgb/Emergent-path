@@ -1,0 +1,162 @@
+{
+  "theme": "light",
+  "brand_name": "Build My Blueprint™ — Re-Entry Blueprint",
+  "typography": {
+    "headings": {
+      "font_family": "Cabinet Grotesk, sans-serif",
+      "style": "Modern, premium, and serious. Use tracking-tight for larger sizes.",
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter font-bold text-[#0A192F]",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-semibold text-[#0A192F]",
+      "h3": "text-xl sm:text-2xl font-medium text-[#112240]"
+    },
+    "body": {
+      "font_family": "IBM Plex Sans, sans-serif",
+      "style": "Clear, accessible, and structured.",
+      "base": "text-base leading-relaxed text-[#334155]",
+      "small": "text-sm text-[#475569]"
+    },
+    "accents": {
+      "overline": "text-xs uppercase tracking-[0.2em] font-semibold text-[#D4AF37]"
+    }
+  },
+  "colors": {
+    "primary": {
+      "navy": "#0A192F",
+      "navy_light": "#112240",
+      "navy_lighter": "#233554"
+    },
+    "accent": {
+      "gold": "#D4AF37",
+      "gold_light": "#F2E2A5",
+      "gold_dark": "#AA8C2C"
+    },
+    "neutral": {
+      "white": "#FFFFFF",
+      "off_white": "#F8FAFC",
+      "slate_100": "#F1F5F9",
+      "slate_200": "#E2E8F0",
+      "text_dark": "#0F172A",
+      "text_muted": "#475569"
+    },
+    "status": {
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "danger": "#EF4444",
+      "info": "#3B82F6"
+    },
+    "background": {
+      "default": "#F8FAFC",
+      "card": "#FFFFFF",
+      "sidebar": "#0A192F"
+    }
+  },
+  "visual_enhancers": {
+    "surfaces": {
+      "cards": "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-200 p-6",
+      "header": "backdrop-blur-xl bg-white/80 border-b border-slate-200 sticky top-0 z-50",
+      "glass_dark": "backdrop-blur-xl bg-[#0A192F]/80 border border-white/10"
+    },
+    "buttons": {
+      "primary": "bg-[#0A192F] text-white rounded-full px-6 py-2.5 font-medium hover:bg-[#112240] transition-colors focus:ring-2 focus:ring-[#D4AF37] focus:ring-offset-2",
+      "accent": "bg-[#D4AF37] text-white rounded-full px-6 py-2.5 font-medium hover:bg-[#AA8C2C] transition-colors focus:ring-2 focus:ring-[#0A192F] focus:ring-offset-2",
+      "outline": "border-2 border-[#0A192F] text-[#0A192F] rounded-full px-6 py-2.5 font-medium hover:bg-slate-50 transition-colors"
+    },
+    "progress_indicators": {
+      "bar": "h-2 w-full bg-slate-100 rounded-full overflow-hidden",
+      "fill": "h-full bg-[#D4AF37] rounded-full"
+    }
+  },
+  "layouts": {
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "bento_marketing": "grid grid-cols-1 md:grid-cols-8 lg:grid-cols-12 gap-8",
+    "sidebar_layout": "flex h-screen overflow-hidden",
+    "main_content": "flex-1 overflow-y-auto bg-[#F8FAFC] p-4 md:p-8"
+  },
+  "responsive": {
+    "breakpoint": "Mobile-first approach. All components must look good on mobile and scale up.",
+    "layout": "On mobile: Sidebars become hamburger menus or bottom nav. Grids collapse to 1 column. Horizontal charts become scrollable or simplified. Forms stack vertically.",
+    "typography": "Use fluid typography or Tailwind's responsive text utilities (text-2xl sm:text-3xl md:text-4xl). Do not use excessively large text on mobile.",
+    "overflow_guard": "Ensure max-w-full and overflow-x-hidden on the main container. Check data tables for horizontal overflow (use overflow-x-auto on table wrappers).",
+    "tap_targets": "All interactive elements must be at least 44x44px. Add min-h-[44px] min-w-[44px] to icon buttons."
+  },
+  "motion": {
+    "hover": "Subtle translate-y-[-2px] and shadow elevation for cards. Background color shifts for buttons.",
+    "transitions": "Use transition-all duration-200 ease-in-out for standard interactions. Do NOT use universal transitions (transition: all) on elements that scale/transform heavily.",
+    "page_load": "Staggered fade-in and slide-up for dashboard widgets."
+  },
+  "components": [
+    {
+      "name": "Card",
+      "path": "/app/frontend/src/components/ui/card.js",
+      "instructions": "Override default Shadcn card. Use rounded-xl, border-slate-200, shadow-sm, and generous padding (p-6). Avoid heavy drop shadows."
+    },
+    {
+      "name": "Progress",
+      "path": "/app/frontend/src/components/ui/progress.js",
+      "instructions": "Use gold (#D4AF37) for the progress indicator fill to emphasize success and momentum."
+    },
+    {
+      "name": "Button",
+      "path": "/app/frontend/src/components/ui/button.js",
+      "instructions": "Make buttons pill-shaped (rounded-full) for a more approachable, empowering feel."
+    },
+    {
+      "name": "Tabs",
+      "path": "/app/frontend/src/components/ui/tabs.js",
+      "instructions": "Style tabs as segmented controls or distinct clean text links with an active underline, overriding the standard Shadcn boxy look."
+    }
+  ],
+  "accessibility": {
+    "contrast": "Ensure all text meets WCAG AA standards. Gold text on white background must be dark enough (#AA8C2C or #D4AF37 if large text).",
+    "focus": "All interactive elements must have clear focus rings. focus-visible:ring-2 focus-visible:ring-[#D4AF37] focus-visible:ring-offset-2",
+    "motion": "Respect prefers-reduced-motion media query."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "instructions": "Use consistent stroke widths. For the Dashboard, use friendly, rounded icons. Avoid strictly technical or penal-looking icons (no chains, gavels, or harsh grids)."
+  },
+  "media": {
+    "image_urls": {
+      "hero_marketing": {
+        "url": "https://images.pexels.com/photos/38240550/pexels-photo-38240550.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Modern building reflecting sky in abstract mirrored facade, showing golden hues."
+      },
+      "professional_group": {
+        "url": "https://images.pexels.com/photos/7109063/pexels-photo-7109063.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "A diverse group of professionals posing confidently in a modern office environment. Use for 'Support Circle' or 'Rebuilding Identity'."
+      },
+      "professional_women": {
+        "url": "https://images.pexels.com/photos/8837166/pexels-photo-8837166.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Four professional women standing confidently in an office, symbolizing diversity and teamwork."
+      },
+      "abstract_gold_blue": {
+        "url": "https://images.pexels.com/photos/18731497/pexels-photo-18731497.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Abstract view of a modern glass facade with blue windows and gold frames. Use for backgrounds or card banners."
+      }
+    }
+  },
+  "instructions_to_main_agent": [
+    "Read the user choices carefully. The application must NOT look like a government or correctional portal. It must be premium, modern, and serious, but encouraging.",
+    "Brand colors are Deep Navy (#0A192F), White, and Gold (#D4AF37). Use Navy for structure, headers, sidebars, and primary text. Use Gold for accents, buttons, and progress bars.",
+    "Implement a mobile-first responsive layout. Ensure the sidebar becomes a hamburger menu or bottom navigation on mobile. Stagger cards into a single column on small screens.",
+    "Ensure generous spacing between sections. Use p-6 or p-8 inside cards so content doesn't feel cramped.",
+    "In the My Blueprint Dashboard, emphasize progress and upcoming milestones using timelines and progress bars.",
+    "Use Cabinet Grotesk for headings and IBM Plex Sans for body text.",
+    "The UI should use subtle glassmorphism for sticky headers (`backdrop-blur-xl bg-white/80 border-b`). Do not use completely transparent headers.",
+    "Use `lucide-react` for icons. Keep them approachable.",
+    "All interactive elements MUST have `data-testid` attributes (e.g., `data-testid=\"login-button\"`).",
+    "Avoid using Shadcn `Card` everywhere if it makes the layout look rigid; mix in flat rectangular sections and custom HTML/Tailwind for marketing/landing areas.",
+    "Bridge AI assistant should be clearly visible but non-intrusive, styled with an empowering tone. Perhaps a floating action button in gold or navy."
+  ],
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "Avoid generic, 'on distribution' outputs. Make creative, distinctive frontends that surprise and delight.",
+    "Create depth through layered design elements with z-index hierarchy and soft shadows.",
+    "DO NOT apply universal transitions like `transition: all`. Target specific properties like `transition-colors`, `transition-transform`.",
+    "DO NOT center align the app container using `.App { text-align: center; }`.",
+    "Always use modern button styles (pill-shaped or rounded-full) with interaction animations.",
+    "Use 2-3x more spacing than feels comfortable.",
+    "NEVER use AI assistant Emoji characters (like 🤖🧠) for icons. Use proper SVG icons.",
+    "Use sonner for toast notifications.",
+    "Ensure you add data-testid to interactive elements."
+  ]
+}
