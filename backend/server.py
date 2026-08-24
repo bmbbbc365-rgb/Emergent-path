@@ -734,6 +734,64 @@ BRIDGE_SYSTEM_BASE = (
 class BridgeIn(BaseModel):
     message: str
     session_id: Optional[str] = None
+    model: Optional[str] = None
+
+
+# OpenAI ChatGPT models available for Bridge (from emergentintegrations playbook)
+CHATGPT_MODELS = [
+    {"id": "gpt-5.6-terra", "label": "GPT-5.6 Terra", "tier": "flagship",
+     "description": "Balanced flagship — warm, careful, great for supportive guidance."},
+    {"id": "gpt-5.6-sol", "label": "GPT-5.6 Sol", "tier": "flagship",
+     "description": "Deep reasoning for planning and complex questions."},
+    {"id": "gpt-5.6-luna", "label": "GPT-5.6 Luna", "tier": "flagship",
+     "description": "Fast, empathetic, conversational."},
+    {"id": "gpt-5.5", "label": "GPT-5.5", "tier": "flagship",
+     "description": "Solid general-purpose reasoning."},
+    {"id": "gpt-5.4", "label": "GPT-5.4", "tier": "standard",
+     "description": "Reliable everyday model. Recommended default."},
+    {"id": "gpt-5.4-mini", "label": "GPT-5.4 Mini", "tier": "fast",
+     "description": "Quick answers, lower cost."},
+    {"id": "gpt-5.2", "label": "GPT-5.2", "tier": "standard",
+     "description": "Stable earlier-generation flagship."},
+    {"id": "gpt-5", "label": "GPT-5", "tier": "standard",
+     "description": "Original GPT-5 baseline."},
+    {"id": "gpt-5-mini", "label": "GPT-5 Mini", "tier": "fast",
+     "description": "Small, fast GPT-5 variant."},
+    {"id": "gpt-5-nano", "label": "GPT-5 Nano", "tier": "fast",
+     "description": "Smallest, fastest GPT-5 variant."},
+    {"id": "gpt-4.1", "label": "GPT-4.1", "tier": "standard",
+     "description": "Strong long-context model."},
+    {"id": "gpt-4.1-mini", "label": "GPT-4.1 Mini", "tier": "fast",
+     "description": "Lower-cost 4.1 variant."},
+    {"id": "gpt-4o", "label": "GPT-4o", "tier": "standard",
+     "description": "Multimodal-capable earlier flagship."},
+    {"id": "o3", "label": "OpenAI o3", "tier": "reasoning",
+     "description": "Reasoning-focused model for hard problems."},
+    {"id": "o4-mini", "label": "OpenAI o4-mini", "tier": "reasoning",
+     "description": "Lightweight reasoning model."},
+]
+DEFAULT_BRIDGE_MODEL = "gpt-5.6-terra"
+ALLOWED_MODEL_IDS = {m["id"] for m in CHATGPT_MODELS}
+
+
+@api_router.get("/bridge/models")
+async def list_bridge_models(user: dict = Depends(current_user)):
+    return {
+        "models": CHATGPT_MODELS,
+        "default": DEFAULT_BRIDGE_MODEL,
+        "current": user.get("bridge_model") or DEFAULT_BRIDGE_MODEL,
+    }
+
+
+class BridgeModelIn(BaseModel):
+    model: str
+
+@api_router.put("/bridge/model")
+async def set_bridge_model(body: BridgeModelIn, user: dict = Depends(current_user)):
+    if body.model not in ALLOWED_MODEL_IDS:
+        raise HTTPException(400, "Unknown model")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"bridge_model": body.model}})
+    return {"ok": True, "model": body.model}
 
 
 @api_router.post("/bridge/chat")
@@ -748,8 +806,14 @@ async def bridge_chat(body: BridgeIn, user: dict = Depends(current_user)):
     ctx = await build_bridge_context(user)
     system_message = BRIDGE_SYSTEM_BASE + "\n\n### PARTICIPANT CONTEXT (private; use to personalize)\n" + ctx
 
+    # Resolve model: request override → user preference → default
+    requested = (body.model or "").strip()
+    model_id = requested if requested in ALLOWED_MODEL_IDS else (user.get("bridge_model") or DEFAULT_BRIDGE_MODEL)
+    if model_id not in ALLOWED_MODEL_IDS:
+        model_id = DEFAULT_BRIDGE_MODEL
+
     chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=sid, system_message=system_message
-                   ).with_model("openai", "gpt-5.6-terra")
+                   ).with_model("openai", model_id)
 
     assistant_chunks: list[str] = []
 

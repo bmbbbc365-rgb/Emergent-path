@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X, Send, Bot, Info } from "lucide-react";
+import { X, Send, Bot, Info, Cpu, Check } from "lucide-react";
 import { API, getToken } from "@/lib/api";
 import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const SAFETY = "Bridge helps you organize and navigate. It does not provide legal, medical, mental-health, or crisis advice, and does not guarantee benefits or outcomes. In a crisis, call or text 988. For emergencies, call 911.";
 
@@ -36,18 +37,23 @@ export default function BridgeChat({ open, onClose }) {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
+  const [models, setModels] = useState([]);
+  const [modelId, setModelId] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
     (async () => {
       try {
-        const [hist, sug] = await Promise.all([
+        const [hist, sug, mods] = await Promise.all([
           fetch(`${API}/bridge/history`, { credentials: "include", headers: { Authorization: `Bearer ${getToken() || ""}` } }).then(r => r.ok ? r.json() : []),
           api.get("/bridge/suggestions").then(r => r.data).catch(() => []),
+          api.get("/bridge/models").then(r => r.data).catch(() => ({ models: [], default: null, current: null })),
         ]);
         setMessages(hist);
         setSuggestions(sug);
+        setModels(mods.models || []);
+        setModelId(mods.current || mods.default);
       } catch {}
     })();
   }, [open]);
@@ -66,7 +72,7 @@ export default function BridgeChat({ open, onClose }) {
       const res = await fetch(`${API}/bridge/chat`, {
         method: "POST", credentials: "include",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken() || ""}` },
-        body: JSON.stringify({ message: t }),
+        body: JSON.stringify({ message: t, model: modelId }),
       });
       if (!res.ok || !res.body) throw new Error("Bridge failed");
       const reader = res.body.getReader();
@@ -106,7 +112,14 @@ export default function BridgeChat({ open, onClose }) {
     }
   };
 
+  const pickModel = async (id) => {
+    setModelId(id);
+    try { await api.put("/bridge/model", { model: id }); } catch {}
+  };
+
   if (!open) return null;
+
+  const activeModel = models.find((m) => m.id === modelId);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" data-testid="bridge-drawer">
@@ -120,7 +133,32 @@ export default function BridgeChat({ open, onClose }) {
               <div className="text-[11px] text-white/60">Navigation & support for your Blueprint</div>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-md" data-testid="bridge-close-btn"><X className="w-5 h-5" /></button>
+          <div className="flex items-center gap-1">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-1.5 text-[11px] text-white/80 hover:text-white bg-white/10 hover:bg-white/15 rounded-full px-3 py-1.5" data-testid="bridge-model-trigger">
+                  <Cpu className="w-3.5 h-3.5" />
+                  <span className="max-w-[110px] truncate">{activeModel?.label || "Model"}</span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72 max-h-[70vh] overflow-y-auto">
+                <DropdownMenuLabel>ChatGPT model</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {models.map((m) => (
+                  <DropdownMenuItem key={m.id} onClick={() => pickModel(m.id)} data-testid={`bridge-model-${m.id}`} className="flex items-start gap-2 py-2">
+                    <div className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center ${m.id === modelId ? "bg-[#B76E79] text-white" : "bg-slate-100 text-slate-300"}`}>
+                      {m.id === modelId && <Check className="w-3 h-3" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-[#1B1033] flex items-center gap-2">{m.label}<span className="bmb-pill bg-slate-100 text-slate-500 !py-0.5 !px-2 !text-[10px] uppercase tracking-widest">{m.tier}</span></div>
+                      <div className="text-[11px] text-slate-500">{m.description}</div>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-md ml-1" data-testid="bridge-close-btn"><X className="w-5 h-5" /></button>
+          </div>
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-[#FBF7F2]">
