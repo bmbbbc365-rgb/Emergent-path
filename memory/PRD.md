@@ -15,43 +15,59 @@
 - Participant owns the data. Nothing is visible to any outside party unless explicitly permitted.
 - Not corrections / probation / legal / medical / clinical software. Education, organization, accountability, opportunity, resource navigation.
 - Bridge does not diagnose, prescribe, give legal advice, provide therapy/crisis counseling, or guarantee benefits/eligibility. Crisis → 988 / 911.
+- **AI assists — the participant confirms. AI never silently changes consequential records or auto-completes legally-significant requirements.**
+- **Sensitive identifiers (SSN / DL# / member IDs / policy #s / account #s) are masked by default; full values only after explicit reveal action; never propagated into unrelated hub records or Bridge context.**
 
-## What's implemented (as of Feb 2026)
-- Auth: JWT email/password + Emergent Google Auth; email/password always available.
-- My Blueprint dashboard: command center pulling required tasks, requirements owed/paid, appointments, medications, benefits, housing, jobs, applications, education progress, goals, and section progress.
-- **Release Requirements & Supervision** — structured records (PO/agency, check-ins, drug tests, ankle monitor, class, community service, court, restitution, fees, curfew, residence, employment). Amount due/paid + payment logging.
-- **Document Center** — private uploads via Emergent object storage; per-participant scoped; rename/soft-delete/download.
-- **Independent Living / Support Circle / Life Skills / Digital / Wellness** — generic Blueprint section pages (tasks + notes + docs) wired to Education courses.
-- **Health Hub** — medications, conditions, appointments, wellness tracking, Emergency Profile (with QR slug when enabled).
-- **Benefits Hub** — active benefits (health/dental/vision/life/disability/critical/accident/medicaid/medicare/auto/renters), "When Something Happens" scenarios (7 seeded), plain-language education.
-- **Home Hub** — housing records, utilities, safety & maintenance basics.
-- **Employment & Income Record** — jobs (supervisor, address, hours, pay), income log (gross/taxes/deductions/net), job applications, resumes.
-- **Identity & Confidence** — strengths/values/interests/skills/motivators chips + story + wins journal.
-- **Education content system** — categories → courses → modules → lessons (text/activity/audio/quiz/video); per-participant lesson progress + course rollup.
-- **Bridge AI** — GPT-5.6 Terra via `emergentintegrations`, SSE streaming, participant-context-aware system prompt, context-aware quick suggestions, in-message navigation buttons via `[Label](/app/route)` markdown, safety boundaries enforced.
-- **Sharing & privacy** — participant-scoped permissions collection; grantee email + role + level; nothing shared by default.
-- Design: BB365 palette — midnight/plum/rose-gold/champagne/cream — Fraunces display + IBM Plex Sans body.
+## What's implemented
+- Auth: JWT email/password + Emergent Google Auth.
+- My Blueprint dashboard.
+- **Release Requirements & Supervision.**
+- **Document Center** (private uploads via Emergent object storage).
+- Deep hubs: Health, Benefits, Home, Employment & Income, Identity.
+- Education content system (courses / modules / lessons with LDT-G blocks).
+- Bridge AI (ChatGPT via emergentintegrations, personality picker for participants, model picker for admins).
+- Arkansas 10:33 public landing page.
+- **[Feb 2026] Smart Document & Intake Engine** — Gemini-powered document understanding, provider-agnostic service, human-in-the-loop confirm/apply, event log, duplicate detection, sensitive-field masking + explicit reveal, cross-user access enforced 404.
 
-## Data model (Mongo, all user_id-scoped unless noted)
-`users`, `sessions` · `tasks`, `notes`, `goals`, `documents`, `support_contacts` · `requirements` · `medications`, `conditions`, `appointments`, `wellness_logs`, `emergency_profile` · `benefits`, `benefit_scenarios` (global) · `housing_records`, `utilities` · `jobs`, `income`, `job_applications`, `resumes` · `courses`, `modules`, `lessons`, `lesson_progress`, `education_categories` (global) · `habits`, `habit_logs` · `personal_profile` · `permissions`, `resources` (global) · `bridge_messages`.
+## Smart Document architecture (Feb 2026)
+- `services/document_understanding.py` — provider-agnostic `DocumentUnderstandingService` with `GeminiProvider` (default `gemini-3-flash-preview`). Model can be swapped without touching Document Center or workflows.
+- New endpoints (all participant-scoped, auth checked server-side, all cross-user access returns 404):
+  - `POST /api/documents/analyze` — upload, store original in object storage, run vision analysis, return classification + fields + duplicate warning. **Nothing committed to hub records yet.**
+  - `POST /api/documents/{id}/confirm` — participant confirms/edits type, category, fields; `keep_sensitive_field_keys` opt-in list.
+  - `POST /api/documents/{id}/apply-extraction` — second explicit action; creates a hub record (`employment_income` / `employment_job` / `benefits_record` / `housing_record` / `health_appointment` / `credential`).
+  - `POST /api/documents/{id}/link-requirement` — attach doc as evidence; never marks requirement complete.
+  - `POST /api/documents/{id}/reveal-sensitive` — explicit reveal of ONE sensitive value; returns 404 if not stored.
+  - `GET /api/documents/{id}` — detail + analysis (sensitive values masked) + event log.
+  - `GET /api/documents/catalog/types` — the known type catalog.
+- New collections: `document_analyses` (structured extraction; raw model text NOT retained), `document_events` (`DOCUMENT_UPLOADED / _ANALYZED / _CONFIRMED / _LINKED / EXTRACTION_APPLIED / REQUIREMENT_EVIDENCE_LINKED / CREDENTIAL_IDENTIFIED`).
+- `documents` extended: `content_hash` (sha256 for dup detection), `document_type`, `confidence`, `related_sections[]`, `related_record_ids[]`, `analysis_id`, `status`.
+- Frontend: mobile-first `/app/documents/scan` (camera capture + upload), Analysis Review panel with editable fields, sensitive fields masked with per-field Show + opt-in Store, ApplyExtraction dialog, requirement attachment picker, duplicate warning, and "Scan a document" CTA on any Blueprint section.
+
+## Acceptance tests (all PASS)
+- A Pay stub → pay_stub / 0.98 conf / employer/dates/gross/net → income record created ✅
+- B Driver License → drivers_license / DL# masked as `••••7777` / not stored when user opts out ✅
+- C Insurance card → insurance_card → benefits_record target, member_id sensitive ✅
+- D Visit summary → medical_record → health-hub, no diagnoses in structured fields ✅
+- E Unknown blob → document_type=unknown / confidence=0.1 (no invented certainty) ✅
+- F Wrong classification → user correction persists (lease → utility_bill) ✅
+- G Duplicate → sha256 match returns `duplicate_of` on second upload ✅
+- H Persistence → status/type/sections/events all survive refetch ✅
+- I Cross-user access → GET/reveal-sensitive/download/confirm all 404 for other user ✅
+
+## Data model
+Adds: `document_analyses`, `document_events`. Extends: `documents`, `requirements.document_ids`.
 
 ## Prioritized backlog (P0 → P2)
-- **P0** Replace `window.prompt` in Requirements payment logging with a shadcn Dialog + amount validation.
-- **P0** Add `data-testid`s to all dialog Save buttons and dialog fields; render inline validation instead of silent HTML5 blocking.
-- **P0** Swap native `<input type="date/datetime-local">` for shadcn Calendar/Popover across all deep pages.
-- **P1** PUT `/api/health/emergency-profile` and `/api/profile/personal` should merge (use `exclude_unset`) rather than full-replace to prevent client wipes.
-- **P1** Set `CORS_ORIGINS` explicitly (wildcard + `allow_credentials=True` is invalid); add Pydantic bodies to generic `crud_endpoints`.
-- **P1** Split `server.py` into routers (`auth`, `health`, `benefits`, `employment`, `education`, `bridge`) + a `seed` module.
-- **P1** Notifications system + email/SMS reminders for required deadlines (Resend integration).
-- **P2** Course knowledge-check / quiz UI + certificates on completion.
-- **P2** Document category filters in the Document Center + Getting-Established checklist grouping.
-- **P2** Bridge multi-personality selector.
-- **P2** Partner layer (Strategic Partner / Employer / Program): invite → participant-approved sharing → outcome reporting.
-- **P2** Habits (Recovery) deep page: readiness-to-change, triggers, coping, urge/craving tracker, setback reset — models already exist.
-- **P2** FHIR / patient-portal architecture for Health Hub (endpoints stubbed).
-- **P2** QR route for participant-approved Emergency Profile view.
+- **P0** Integrate LDT-G tabs directly into Requirements, Employment, Health, Benefits, Home hubs.
+- **P1** Recovery Habits deep page (triggers, coping, urge log).
+- **P1** Granular permissions for Future Partner Layer.
+- **P1** Notifications + Resend email reminders for required deadlines.
+- **P2** Testimonial Wall + Welcome Video on landing.
+- **P2** Bridge can locate documents by natural language ("Where is my most recent pay stub?") using the new event/relationship data — respecting the same server-side authorization.
+- **P2** Course knowledge-check UI + certificates.
+- **P2** Partner layer (Strategic / Employer / Program).
 
 ## Notes for next session
-- Backend tests live at `/app/backend/tests/`; run `cd /app/backend && python -m pytest tests/ -q`.
-- Bridge SSE encodes newlines as `<NL>` inside `data:` frames; frontend decodes them.
-- Seed only runs when a user has zero tasks; owner is re-seeded on startup if empty.
+- Storage abstraction lives in `services/document_understanding.py`. Provider can be changed via `DOC_UNDERSTANDING_PROVIDER` / `DOC_UNDERSTANDING_MODEL` env vars — no code changes to callers.
+- Bridge continues to use OpenAI (GPT-5.6 Terra default). Gemini is only used for document understanding.
+- Raw model responses containing sensitive text are NOT persisted; only structured fields + confirmed values are stored.

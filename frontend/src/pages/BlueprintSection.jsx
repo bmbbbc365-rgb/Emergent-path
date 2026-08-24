@@ -220,10 +220,19 @@ export default function BlueprintSection() {
         eyebrow="Private documents"
         title="Your uploads for this section"
         action={
-          <label className="rounded-full bg-[#B76E79] hover:bg-[#8E4E5A] text-[#1B1033] font-medium px-5 py-2 inline-flex items-center gap-2 cursor-pointer" data-testid="upload-doc-btn">
-            <Upload className="w-4 h-4" /> {uploading ? "Uploading…" : "Upload document"}
-            <input type="file" hidden onChange={uploadFile} data-testid="upload-input" />
-          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={() => window.location.assign('/app/documents/scan')}
+              className="rounded-full bg-[#4a2a5a] hover:bg-[#3a1e4a] text-white gap-2"
+              data-testid="scan-doc-btn"
+            >
+              <Upload className="w-4 h-4" /> Scan a document
+            </Button>
+            <label className="rounded-full bg-[#B76E79] hover:bg-[#8E4E5A] text-[#1B1033] font-medium px-5 py-2 inline-flex items-center gap-2 cursor-pointer" data-testid="upload-doc-btn">
+              <Upload className="w-4 h-4" /> {uploading ? "Uploading…" : "Upload only"}
+              <input type="file" hidden onChange={uploadFile} data-testid="upload-input" />
+            </label>
+          </div>
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -234,6 +243,11 @@ export default function BlueprintSection() {
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-[#1B1033] truncate">{d.label || d.original_filename}</div>
                 <div className="text-[11px] text-slate-500 truncate">{d.original_filename} · {(d.size / 1024).toFixed(1)} KB</div>
+                <div className="flex flex-wrap items-center gap-1 mt-1">
+                  {d.document_type_label && <span className="bmb-pill bg-[#e8dbe4] text-[#4a2a5a] text-[10px]">{d.document_type_label}</span>}
+                  {typeof d.confidence === 'number' && <span className="text-[10px] text-slate-400">{Math.round(d.confidence*100)}%</span>}
+                  {d.status === 'needs_review' && <span className="bmb-pill bg-amber-100 text-amber-800 text-[10px]">Needs review</span>}
+                </div>
               </div>
               <button onClick={() => downloadFile(d)} className="text-slate-500 hover:text-[#1B1033]" title="Download" data-testid={`download-doc-${d.id}`}><Download className="w-4 h-4" /></button>
               <button onClick={() => deleteDoc(d.id)} className="text-slate-400 hover:text-red-500" title="Remove" data-testid={`delete-doc-${d.id}`}><Trash2 className="w-4 h-4" /></button>

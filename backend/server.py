@@ -8,9 +8,11 @@ Participant-owned life-readiness system. Not a task manager.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
+import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -315,7 +317,7 @@ crud_endpoints("support-circle", "support_contacts", ["name", "role", "category"
 # ---------- Requirements ----------
 crud_endpoints("requirements", "requirements",
     ["type", "description", "agency", "person", "start_date", "due_date", "recurrence", "status",
-     "amount_due", "amount_paid", "appointment_at", "notes", "reminder_days_before"], sort_field="due_date", sort_dir=1)
+     "amount_due", "amount_paid", "appointment_at", "notes", "reminder_days_before", "document_ids"], sort_field="due_date", sort_dir=1)
 
 
 # ---------- Medications / Conditions / Appointments / Wellness ----------
@@ -480,6 +482,467 @@ async def download_document(
 @api_router.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str, user: dict = Depends(current_user)):
     await db.documents.update_one({"id": doc_id, "user_id": user["user_id"]}, {"$set": {"is_deleted": True}})
+    return {"ok": True}
+
+
+# ---------- Smart Document & Intake Engine ----------
+# Uses the provider-agnostic DocumentUnderstandingService (services/document_understanding.py).
+# The service currently uses Gemini via the Emergent Universal Key. Bridge (OpenAI) is untouched.
+from services.document_understanding import (  # noqa: E402
+    get_document_understanding_service, is_supported_mime, mask_sensitive_value,
+    KNOWN_DOCUMENT_TYPES, CATEGORY_TO_SECTIONS,
+)
+
+
+DOCUMENT_TYPE_CATALOG = [
+    {"id": k, "label": v["label"], "category": v["category"]}
+    for k, v in KNOWN_DOCUMENT_TYPES.items()
+]
+
+DOC_EVENT_TYPES = {
+    "DOCUMENT_UPLOADED", "DOCUMENT_ANALYZED", "DOCUMENT_CONFIRMED",
+    "DOCUMENT_CLASSIFIED", "DOCUMENT_LINKED", "EXTRACTED_DATA_CONFIRMED",
+    "RELEVANT_DATE_FOUND", "REQUIREMENT_EVIDENCE_LINKED", "CREDENTIAL_IDENTIFIED",
+    "EXTRACTION_APPLIED",
+}
+
+
+async def _record_doc_event(user_id: str, doc_id: str, event_type: str, payload: Optional[dict] = None):
+    """Log a document lifecycle event. Sensitive values must never be placed in payload."""
+    if event_type not in DOC_EVENT_TYPES:
+        return
+    await db.document_events.insert_one({
+        "id": new_id(), "user_id": user_id, "doc_id": doc_id,
+        "type": event_type, "payload": payload or {}, "created_at": now_iso(),
+    })
+
+
+def _sanitize_fields_for_output(fields: list[dict]) -> list[dict]:
+    """Ensure a fields list is safe to return (labels + values, non-sensitive only)."""
+    out = []
+    for f in fields or []:
+        if not isinstance(f, dict) or not f.get("key"):
+            continue
+        out.append({"key": f["key"], "label": f.get("label") or f["key"], "value": f.get("value")})
+    return out
+
+
+def _serialize_analysis(analysis: dict) -> dict:
+    """Return an analysis document with sensitive values MASKED."""
+    if not analysis:
+        return {}
+    sensitive = analysis.get("sensitive_fields") or []
+    masked = []
+    for f in sensitive:
+        masked.append({
+            "key": f.get("key"), "label": f.get("label") or f.get("key"),
+            "value_masked": mask_sensitive_value(f.get("key", ""), f.get("value")),
+            "sensitive": True,
+        })
+    return {
+        "id": analysis.get("id"),
+        "doc_id": analysis.get("doc_id"),
+        "document_type": analysis.get("document_type"),
+        "document_type_label": analysis.get("document_type_label"),
+        "category": analysis.get("category"),
+        "confidence": analysis.get("confidence"),
+        "suggested_sections": analysis.get("suggested_sections") or [],
+        "suggested_hub_targets": analysis.get("suggested_hub_targets") or [],
+        "summary": analysis.get("summary") or "",
+        "fields": _sanitize_fields_for_output(analysis.get("fields") or []),
+        "sensitive_fields": masked,
+        "provider": analysis.get("provider"),
+        "model": analysis.get("model"),
+        "warnings": analysis.get("warnings") or [],
+        "created_at": analysis.get("created_at"),
+    }
+
+
+@api_router.get("/documents/catalog/types")
+async def documents_catalog_types(user: dict = Depends(current_user)):
+    """Return the known document-type catalog used by the classifier and pickers."""
+    return {"types": DOCUMENT_TYPE_CATALOG,
+            "sections_by_category": CATEGORY_TO_SECTIONS}
+
+
+@api_router.post("/documents/analyze")
+async def analyze_document(
+    file: UploadFile = File(...),
+    label: str = Query(""),
+    user: dict = Depends(current_user),
+):
+    """Upload a document, store the original, run Gemini vision analysis,
+    return a draft classification. NOTHING is committed to hub records yet —
+    the participant must confirm via /confirm and /apply-extraction.
+    """
+    service = get_document_understanding_service()
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(400, "File too large (max 20MB)")
+
+    content_type = (file.content_type or "application/octet-stream").lower()
+    filename = file.filename or "upload"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+
+    # Content hash for duplicate detection (per participant).
+    content_hash = hashlib.sha256(data).hexdigest()
+    existing_dup = await db.documents.find_one(
+        {"user_id": user["user_id"], "is_deleted": False, "content_hash": content_hash},
+        {"_id": 0, "id": 1, "label": 1, "document_type": 1, "uploaded_at": 1},
+    )
+
+    # Persist the original into existing object storage (untouched by AI).
+    path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4().hex}.{ext}"
+    result = put_object(path, data, content_type)
+
+    doc_id = new_id("doc_")
+    doc = {
+        "id": doc_id,
+        "user_id": user["user_id"],
+        "section": "document-center",
+        "category": "other",
+        "label": label or filename,
+        "storage_path": result["path"],
+        "original_filename": filename,
+        "content_type": content_type,
+        "size": result.get("size", len(data)),
+        "content_hash": content_hash,
+        "document_type": None,
+        "document_type_label": None,
+        "confidence": None,
+        "related_sections": ["documents"],
+        "related_record_ids": [],   # list of {type, id, section}
+        "analysis_id": None,
+        "status": "analyzing",
+        "is_deleted": False,
+        "uploaded_at": now_iso(),
+    }
+    await db.documents.insert_one(doc)
+    await _record_doc_event(user["user_id"], doc_id, "DOCUMENT_UPLOADED",
+                            {"filename": filename, "size": doc["size"]})
+
+    # Run vision analysis (Gemini via emergentintegrations). We write bytes to a
+    # temp file because the emergentintegrations SDK takes a file path.
+    analysis_serialized: Optional[dict] = None
+    if service and is_supported_mime(content_type):
+        try:
+            with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tf:
+                tf.write(data)
+                tmp_path = tf.name
+            try:
+                result_obj = await service.analyze(tmp_path, content_type, hints={"filename": filename})
+            finally:
+                try: os.unlink(tmp_path)
+                except Exception: pass
+
+            analysis_id = new_id("ana_")
+            analysis_doc = {
+                "id": analysis_id,
+                "user_id": user["user_id"],
+                "doc_id": doc_id,
+                "document_type": result_obj.document_type,
+                "document_type_label": result_obj.document_type_label,
+                "category": result_obj.category,
+                "confidence": result_obj.confidence,
+                "suggested_sections": result_obj.suggested_sections,
+                "suggested_hub_targets": result_obj.suggested_hub_targets,
+                "summary": result_obj.summary,
+                # NOTE: We intentionally do NOT store the raw model response.
+                "fields": [{"key": f.key, "label": f.label, "value": f.value} for f in result_obj.fields],
+                "sensitive_fields": [
+                    {"key": f.key, "label": f.label, "value": f.value} for f in result_obj.sensitive_fields
+                ],
+                "provider": result_obj.provider,
+                "model": result_obj.model,
+                "warnings": result_obj.warnings,
+                "created_at": now_iso(),
+            }
+            await db.document_analyses.insert_one(analysis_doc)
+            await db.documents.update_one({"id": doc_id, "user_id": user["user_id"]}, {"$set": {
+                "analysis_id": analysis_id,
+                "document_type": result_obj.document_type,
+                "document_type_label": result_obj.document_type_label,
+                "category": result_obj.category,
+                "confidence": result_obj.confidence,
+                "status": "needs_review",
+            }})
+            await _record_doc_event(user["user_id"], doc_id, "DOCUMENT_ANALYZED",
+                                    {"document_type": result_obj.document_type,
+                                     "confidence": result_obj.confidence})
+            analysis_serialized = _serialize_analysis(analysis_doc)
+        except Exception as e:
+            logger.exception("Document analysis failed")
+            await db.documents.update_one({"id": doc_id, "user_id": user["user_id"]},
+                                          {"$set": {"status": "needs_review"}})
+    else:
+        # Unsupported mime type — still preserve the file, mark for manual review.
+        await db.documents.update_one({"id": doc_id, "user_id": user["user_id"]},
+                                      {"$set": {"status": "needs_review"}})
+
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"]}, {"_id": 0})
+    return {
+        "document": doc,
+        "analysis": analysis_serialized,
+        "duplicate_of": existing_dup,   # None or {id, label, ...}
+    }
+
+
+class DocumentConfirmIn(BaseModel):
+    document_type: str
+    category: Optional[str] = None
+    label: Optional[str] = None
+    related_sections: list[str] = []
+    fields: list[dict] = []                # non-sensitive; participant can edit
+    keep_sensitive_field_keys: list[str] = []  # which sensitive fields to retain
+
+
+@api_router.post("/documents/{doc_id}/confirm")
+async def confirm_document(doc_id: str, body: DocumentConfirmIn, user: dict = Depends(current_user)):
+    """Participant confirms (or corrects) the AI classification and extracted fields.
+    Sensitive fields not listed in keep_sensitive_field_keys are DROPPED from storage.
+    """
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"], "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+
+    dtype = (body.document_type or "unknown").lower()
+    if dtype not in KNOWN_DOCUMENT_TYPES:
+        dtype = "other"
+    meta = KNOWN_DOCUMENT_TYPES[dtype]
+    category = body.category or meta["category"]
+    sections = body.related_sections or CATEGORY_TO_SECTIONS.get(category, ["documents"])
+
+    upd = {
+        "document_type": dtype,
+        "document_type_label": meta["label"],
+        "category": category,
+        "related_sections": sections,
+        "section": sections[0] if sections else "documents",
+        "confirmed_at": now_iso(),
+        "status": "confirmed",
+    }
+    if body.label:
+        upd["label"] = body.label
+    await db.documents.update_one({"id": doc_id, "user_id": user["user_id"]}, {"$set": upd})
+
+    # Update analysis with confirmed fields (participant-edited).
+    if doc.get("analysis_id"):
+        analysis = await db.document_analyses.find_one({"id": doc["analysis_id"], "user_id": user["user_id"]}, {"_id": 0})
+        if analysis:
+            # Preserve only chosen sensitive fields; drop the rest permanently.
+            keep = set(body.keep_sensitive_field_keys or [])
+            existing_sensitive = analysis.get("sensitive_fields") or []
+            kept_sensitive = [f for f in existing_sensitive if f.get("key") in keep]
+            confirmed_fields = _sanitize_fields_for_output(body.fields)
+            await db.document_analyses.update_one(
+                {"id": analysis["id"], "user_id": user["user_id"]},
+                {"$set": {
+                    "confirmed_fields": confirmed_fields,
+                    "sensitive_fields": kept_sensitive,
+                    "confirmed_at": now_iso(),
+                }},
+            )
+
+    await _record_doc_event(user["user_id"], doc_id, "DOCUMENT_CONFIRMED",
+                            {"document_type": dtype, "category": category})
+    if dtype == "training_certificate":
+        await _record_doc_event(user["user_id"], doc_id, "CREDENTIAL_IDENTIFIED", {})
+
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"]}, {"_id": 0})
+    analysis = None
+    if doc.get("analysis_id"):
+        raw = await db.document_analyses.find_one({"id": doc["analysis_id"], "user_id": user["user_id"]}, {"_id": 0})
+        analysis = _serialize_analysis(raw or {})
+    return {"document": doc, "analysis": analysis}
+
+
+@api_router.get("/documents/{doc_id}")
+async def get_document(doc_id: str, user: dict = Depends(current_user)):
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"], "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Not found")
+    analysis = None
+    if doc.get("analysis_id"):
+        raw = await db.document_analyses.find_one({"id": doc["analysis_id"], "user_id": user["user_id"]}, {"_id": 0})
+        analysis = _serialize_analysis(raw or {})
+    events = await db.document_events.find({"user_id": user["user_id"], "doc_id": doc_id}, {"_id": 0}).sort("created_at", 1).to_list(200)
+    return {"document": doc, "analysis": analysis, "events": events}
+
+
+@api_router.post("/documents/{doc_id}/reveal-sensitive")
+async def reveal_sensitive(doc_id: str, body: dict, user: dict = Depends(current_user)):
+    """Explicit reveal — returns ONE sensitive field's full value.
+    Requires participant to be logged in AND to own the document. Never included in list responses.
+    """
+    field_key = (body or {}).get("field_key")
+    if not field_key:
+        raise HTTPException(400, "field_key required")
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"], "is_deleted": False}, {"_id": 0})
+    if not doc or not doc.get("analysis_id"):
+        raise HTTPException(404, "Not found")
+    analysis = await db.document_analyses.find_one({"id": doc["analysis_id"], "user_id": user["user_id"]}, {"_id": 0})
+    if not analysis:
+        raise HTTPException(404, "Not found")
+    for f in (analysis.get("sensitive_fields") or []):
+        if f.get("key") == field_key:
+            return {"key": field_key, "label": f.get("label"), "value": f.get("value")}
+    raise HTTPException(404, "Sensitive field not stored")
+
+
+class ApplyExtractionIn(BaseModel):
+    target: str                   # e.g. "employment_income", "employment_job", "benefits_record", "housing_record", "health_appointment"
+    overrides: dict = {}
+
+
+@api_router.post("/documents/{doc_id}/apply-extraction")
+async def apply_extraction(doc_id: str, body: ApplyExtractionIn, user: dict = Depends(current_user)):
+    """Create a hub record from confirmed extracted fields. Never called automatically —
+    requires a second explicit participant action after /confirm.
+    """
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"], "is_deleted": False}, {"_id": 0})
+    if not doc or doc.get("status") != "confirmed" or not doc.get("analysis_id"):
+        raise HTTPException(400, "Document must be confirmed first")
+    analysis = await db.document_analyses.find_one({"id": doc["analysis_id"], "user_id": user["user_id"]}, {"_id": 0})
+    fields_list = (analysis or {}).get("confirmed_fields") or (analysis or {}).get("fields") or []
+    fmap = {f["key"]: f.get("value") for f in fields_list if isinstance(f, dict) and f.get("key")}
+    fmap.update(body.overrides or {})
+
+    def get(*keys, default=None):
+        for k in keys:
+            if k in fmap and fmap[k] not in (None, ""):
+                return fmap[k]
+        return default
+
+    def as_float(v):
+        try: return float(str(v).replace("$", "").replace(",", ""))
+        except Exception: return None
+
+    created = None
+    collection = None
+    payload: dict = {}
+    section_link = "documents"
+
+    if body.target == "employment_income":
+        payload = {
+            "pay_date": get("pay_date", "date", "payment_date"),
+            "pay_period_start": get("pay_period_start", "pay_period_start_date", "period_start"),
+            "pay_period_end": get("pay_period_end", "pay_period_end_date", "period_end"),
+            "gross_pay": as_float(get("gross_pay", "gross", "gross_earnings", "gross_amount")),
+            "taxes": as_float(get("taxes", "total_taxes", "tax_total")),
+            "deductions": as_float(get("deductions", "total_deductions")),
+            "net_pay": as_float(get("net_pay", "net", "take_home", "net_amount")),
+            "hours": as_float(get("hours", "hours_worked", "total_hours")),
+            "notes": get("employer", "employer_name") and f"Employer: {get('employer', 'employer_name')}" or None,
+            "document_id": doc_id,
+        }
+        collection = "income"; section_link = "employment-record"
+    elif body.target == "employment_job":
+        payload = {
+            "employer": get("employer", "employer_name", "company"),
+            "job_title": get("job_title", "title", "role", "position"),
+            "start_date": get("start_date", "hire_date", "employment_start"),
+            "status": "active",
+            "pay_rate": as_float(get("pay_rate", "hourly_rate", "rate")),
+            "notes": get("employer_address") and f"Address: {get('employer_address')}" or None,
+        }
+        collection = "jobs"; section_link = "employment-record"
+    elif body.target == "benefits_record":
+        payload = {
+            "kind": get("benefit_type", "kind", "coverage_type", "plan_type", default="other"),
+            "plan_name": get("plan_name", "plan"),
+            "carrier": get("carrier", "insurer", "issuer", "insurance_company"),
+            "effective_date": get("effective_date", "coverage_start", "start_date"),
+            "renewal_date": get("renewal_date", "coverage_end", "end_date"),
+            "monthly_premium": as_float(get("premium", "monthly_premium")),
+            "document_ids": [doc_id],
+        }
+        collection = "benefits"; section_link = "benefits-hub"
+    elif body.target == "housing_record":
+        payload = {
+            "status": "current",
+            "type": get("housing_type", default="rented"),
+            "address": get("address", "property_address", "tenant_address"),
+            "lease_start": get("lease_start", "start_date", "lease_start_date"),
+            "lease_end": get("lease_end", "end_date", "lease_end_date"),
+            "rent": as_float(get("rent", "monthly_rent", "monthly_amount")),
+            "landlord_name": get("landlord", "landlord_name", "lessor"),
+            "landlord_contact": get("landlord_contact", "landlord_phone", "lessor_phone"),
+            "document_ids": [doc_id],
+        }
+        collection = "housing_records"; section_link = "home-hub"
+    elif body.target == "health_appointment":
+        payload = {
+            "provider": get("provider", "clinic", "doctor", "provider_name"),
+            "location": get("location", "address", "clinic_address"),
+            "scheduled_at": get("appointment_at", "appointment_date", "date_time", "date"),
+            "purpose": get("purpose", "reason", "visit_type"),
+            "document_ids": [doc_id],
+        }
+        collection = "appointments"; section_link = "health-hub"
+    elif body.target == "credential":
+        payload = {
+            "title": get("credential_name", "course_name", "certificate_name") or doc.get("label"),
+            "document_id": doc_id,
+            "summary": get("issuer", "provider") and f"Issued by {get('issuer', 'provider')}" or None,
+        }
+        collection = "resumes"; section_link = "employment-readiness"
+    else:
+        raise HTTPException(400, f"Unsupported target: {body.target}")
+
+    payload = {k: v for k, v in payload.items() if v not in (None, "", [])}
+    payload.update({"id": new_id(), "user_id": user["user_id"], "created_at": now_iso()})
+    await db[collection].insert_one(payload)
+    payload.pop("_id", None)
+    created = payload
+
+    # Attach the newly created record to the document's related_record_ids.
+    await db.documents.update_one(
+        {"id": doc_id, "user_id": user["user_id"]},
+        {"$addToSet": {"related_record_ids": {"type": body.target, "id": created["id"], "section": section_link}},
+         "$push": {"related_sections": section_link}},
+    )
+    # Deduplicate related_sections.
+    doc2 = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"]}, {"_id": 0})
+    sections_dedup = list(dict.fromkeys(doc2.get("related_sections") or []))
+    await db.documents.update_one({"id": doc_id, "user_id": user["user_id"]}, {"$set": {"related_sections": sections_dedup}})
+
+    await _record_doc_event(user["user_id"], doc_id, "EXTRACTION_APPLIED",
+                            {"target": body.target, "record_id": created["id"]})
+    return {"created": created, "target": body.target}
+
+
+class LinkRequirementIn(BaseModel):
+    requirement_id: str
+
+
+@api_router.post("/documents/{doc_id}/link-requirement")
+async def link_requirement(doc_id: str, body: LinkRequirementIn, user: dict = Depends(current_user)):
+    """Attach a document to an existing requirement as evidence.
+    IMPORTANT: does NOT mark the requirement complete — that remains a human action.
+    """
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"], "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    req = await db.requirements.find_one({"id": body.requirement_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not req:
+        raise HTTPException(404, "Requirement not found")
+
+    await db.requirements.update_one(
+        {"id": body.requirement_id, "user_id": user["user_id"]},
+        {"$addToSet": {"document_ids": doc_id}},
+    )
+    await db.documents.update_one(
+        {"id": doc_id, "user_id": user["user_id"]},
+        {"$addToSet": {"related_record_ids": {"type": "requirement", "id": body.requirement_id, "section": "requirements"}},
+         "$push": {"related_sections": "requirements"}},
+    )
+    doc2 = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"]}, {"_id": 0})
+    await db.documents.update_one({"id": doc_id, "user_id": user["user_id"]},
+                                  {"$set": {"related_sections": list(dict.fromkeys(doc2.get("related_sections") or []))}})
+    await _record_doc_event(user["user_id"], doc_id, "REQUIREMENT_EVIDENCE_LINKED",
+                            {"requirement_id": body.requirement_id})
     return {"ok": True}
 
 
