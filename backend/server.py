@@ -548,9 +548,167 @@ async def course_detail(course_id: str, user: dict = Depends(current_user)):
             p = prog_by_lesson.get(l["id"], {})
             l["completed"] = bool(p.get("completed"))
             l["progress"] = p.get("progress", 0)
+            # Attach rich content blocks if we have them for this lesson
+            l["content"] = LESSON_CONTENT.get((course["title"], l["title"])) or []
         m["lessons"] = lessons
     course["modules"] = modules
     return course
+
+
+# ---- Rich lesson content (LEARN → DO → TRACK → GET HELP blocks) ----
+LESSON_CONTENT = {
+    ("Decision-Making Framework", "The 4-step framework"): [
+        {"type": "text", "title": "Learn: Pause → Name → Weigh → Choose",
+         "body": "Hard calls feel less overwhelming when you slow them down.\n\n1. **Pause.** Take one breath before you respond.\n2. **Name the choice.** What are you actually deciding? Write it as a single sentence.\n3. **Weigh consequences.** For each option list the likely short-term and long-term effect on you, your goals, and the people you care about.\n4. **Choose the next right thing.** You don't have to solve the whole problem — pick the next honest step."},
+        {"type": "reflection", "title": "Reflection",
+         "prompt": "Think about a recent hard call. Which of the four steps did you skip? What would you do differently next time?"},
+        {"type": "resource", "title": "If it involves legal or safety risk",
+         "items": [{"label": "Talk to your PO or attorney before acting.", "detail": "This platform is not legal advice."},
+                   {"label": "In a crisis, call or text 988.", "detail": "Free, confidential, 24/7."}]},
+    ],
+    ("Decision-Making Framework", "Practice: replay a hard call"): [
+        {"type": "text", "title": "Do the work",
+         "body": "This lesson is an activity. Pick one decision from the last two weeks — big or small — and run it back through the four steps."},
+        {"type": "worksheet", "title": "Worksheet",
+         "prompts": ["The decision was…", "What I actually did…", "Short-term effect…", "Long-term effect…", "What I'd do differently next time…"]},
+        {"type": "checklist", "title": "Habit checklist",
+         "items": ["I paused before responding", "I named the choice out loud or in writing", "I weighed short + long-term effects", "I chose the next right thing"]},
+    ],
+    ("Decision-Making Framework", "Check-in"): [
+        {"type": "quiz", "title": "Knowledge check",
+         "questions": [
+             {"q": "Which is NOT part of the framework?", "options": ["Pause", "Name", "React", "Weigh"], "answer": 2,
+              "why": "React is the opposite of the framework — the framework replaces reacting with choosing."},
+             {"q": "What's the point of step 4?", "options": ["Solve everything now", "Pick the next honest step", "Talk to no one"], "answer": 1,
+              "why": "Small honest steps compound. You don't have to solve the whole problem in one move."},
+         ]},
+    ],
+    ("Recognizing Scams & Manipulation", "Red flags"): [
+        {"type": "text", "title": "Learn: the common red flags",
+         "body": "Scammers rely on urgency, secrecy, and small early wins. Watch for:\n• **Urgency:** \"You must act right now.\"\n• **Secrecy:** \"Don't tell anyone.\"\n• **Upfront fees:** legitimate jobs and benefits do not ask you to pay to apply.\n• **Too good to be true:** unusually easy money, guaranteed approval, no ID needed."},
+        {"type": "scenario", "title": "Scenario",
+         "situation": "You get a text: \"Congrats — you're pre-approved for a $2,000 grant. Send your bank routing number to claim.\"",
+         "question": "What are the red flags? What would you do?"},
+    ],
+    ("Recognizing Scams & Manipulation", "Quiz: is this a scam?"): [
+        {"type": "quiz", "title": "Spot it",
+         "questions": [
+             {"q": "You get a check by mail asking you to deposit it and Western Union some back. What is it?", "options": ["A great job", "A fake check scam", "Normal onboarding"], "answer": 1,
+              "why": "Real employers never ask you to send money back from a check they mailed you."},
+             {"q": "A recruiter demands $150 to \"secure your background check\" before interview.", "options": ["Pay it", "Walk away", "Send half"], "answer": 1,
+              "why": "Legitimate employers pay for their own background checks."},
+         ]},
+    ],
+    ("Stress & Emotional Awareness", "Naming what you feel"): [
+        {"type": "text", "title": "Learn: name it to tame it",
+         "body": "Big feelings shrink when you name them out loud. Try: \"I'm noticing anger,\" or \"I'm noticing shame.\" Naming activates the thinking part of your brain and quiets the alarm."},
+        {"type": "reflection", "title": "Reflection",
+         "prompt": "What feeling is loudest right now? Name it. Where do you feel it in your body?"},
+    ],
+    ("Stress & Emotional Awareness", "4-7-8 Breathing"): [
+        {"type": "text", "title": "Do: try 4-7-8",
+         "body": "Inhale through your nose for 4 seconds. Hold for 7. Exhale slowly through pursed lips for 8. Repeat 3 – 4 cycles."},
+        {"type": "checklist", "title": "Try it now",
+         "items": ["I sat somewhere quiet", "I did 3 – 4 cycles", "I noticed a small shift"]},
+    ],
+    ("Stress & Emotional Awareness", "Journal: your stress signals"): [
+        {"type": "worksheet", "title": "Body & mind cues",
+         "prompts": ["Body cue 1 (e.g., jaw clenching)", "Body cue 2", "Thought cue 1 (e.g., 'nothing works')", "Thought cue 2", "Behavior cue (e.g., isolating)"]},
+        {"type": "resource", "title": "Get help",
+         "items": [{"label": "SAMHSA Helpline: 1-800-662-4357", "detail": "24/7 free, confidential."},
+                   {"label": "988 Suicide & Crisis Lifeline", "detail": "Call or text 988."}]},
+    ],
+    ("Resume for Fair-Chance Employers", "Format basics"): [
+        {"type": "text", "title": "Learn",
+         "body": "Keep it to one page. Sections in this order:\n1. **Contact** — name, phone, email\n2. **Headline** — 1 line: role + strengths\n3. **Skills** — 4 – 6 concrete skills\n4. **Experience** — most recent first; use action verbs\n5. **Education / training** — include certificates"},
+        {"type": "checklist", "title": "Resume readiness",
+         "items": ["Contact info at top", "Professional email address", "One page", "No typos", "Action verbs (operated, coordinated, resolved)", "Saved as PDF"]},
+    ],
+    ("Resume for Fair-Chance Employers", "Language that works"): [
+        {"type": "text", "title": "Verbs that carry weight",
+         "body": "Use: operated, coordinated, resolved, trained, delivered, maintained, supported, prepared, verified. Avoid: 'responsible for,' 'helped with,' 'stuff.'"},
+        {"type": "worksheet", "title": "Rewrite",
+         "prompts": ["Old line: 'Helped with cleaning'", "New line with strong verb:", "Old line: 'Was responsible for shipping'", "New line with strong verb:"]},
+    ],
+    ("Resume for Fair-Chance Employers", "Draft yours"): [
+        {"type": "text", "title": "Do it",
+         "body": "Copy your details into the sections above. Save it, then upload to the Document Center under 'Employment'."},
+        {"type": "resource", "title": "Next step",
+         "items": [{"label": "Open Employment & Professional Readiness", "route": "/app/section/employment-readiness"},
+                   {"label": "Open Document Center", "route": "/app/section/documents"}]},
+    ],
+    ("Interview Basics", "Common questions"): [
+        {"type": "text", "title": "Learn",
+         "body": "Employers usually ask:\n• Tell me about yourself.\n• Why here?\n• Tell me about a challenge and how you handled it.\n\nPrepare 60 – 90 second answers. End with a strength you'll bring to the role."},
+        {"type": "reflection", "title": "Prepare",
+         "prompt": "Write your 60-second answer to 'Tell me about yourself.' Include: what you do, one strength, one recent win, and what you're looking for next."},
+    ],
+    ("Interview Basics", "Answering about your record"): [
+        {"type": "text", "title": "Own it briefly",
+         "body": "Employers respect honesty and forward motion. A strong answer has three parts:\n1. Name it briefly (one sentence).\n2. What you learned or did about it.\n3. What you do now.\n\nDo not over-explain. Return the conversation to the job."},
+        {"type": "scenario", "title": "Try it",
+         "situation": "The interviewer asks: \"I see you have a record. Can you tell me about it?\"",
+         "question": "Write a 3-sentence answer using the pattern above."},
+    ],
+    ("Interview Basics", "Practice out loud"): [
+        {"type": "checklist", "title": "Practice checklist",
+         "items": ["I recorded myself once", "I timed it (60 – 90 seconds)", "I ended with a strength", "I asked a friend for feedback"]},
+    ],
+    ("Personal Budgeting 101", "Fixed vs. variable expenses"): [
+        {"type": "text", "title": "Learn",
+         "body": "**Fixed** expenses are the same each month (rent, phone, insurance). **Variable** expenses change (groceries, gas, entertainment). Knowing which is which is the first step to a budget that survives real life."},
+        {"type": "worksheet", "title": "Your top 5 fixed & top 5 variable",
+         "prompts": ["Fixed 1", "Fixed 2", "Fixed 3", "Fixed 4", "Fixed 5", "Variable 1", "Variable 2", "Variable 3", "Variable 4", "Variable 5"]},
+    ],
+    ("Personal Budgeting 101", "50 / 30 / 20 starter"): [
+        {"type": "text", "title": "Learn",
+         "body": "As a starter target: 50% needs, 30% wants, 20% savings + debt. Adjust to reality — if rent is 55% of income, savings might start at 5%. Small consistent beats big and once."},
+        {"type": "checklist", "title": "This week",
+         "items": ["I wrote my monthly income", "I listed my needs", "I set a $5 – $25 automatic savings transfer"]},
+    ],
+    ("Personal Budgeting 101", "Set one savings goal"): [
+        {"type": "reflection", "title": "One small goal",
+         "prompt": "Pick one savings goal for the next 30 days. Write the number and the date. What's step one this week?"},
+        {"type": "resource", "title": "Next step",
+         "items": [{"label": "Open Employment & Income Record", "route": "/app/section/employment-record"}]},
+    ],
+    ("Digital Basics", "Email that looks professional"): [
+        {"type": "text", "title": "Learn",
+         "body": "Use First.Last (or a close variant) at a mainstream provider (Gmail, Outlook). Avoid nicknames or numbers that feel personal. This email will appear on every job application and government form."},
+        {"type": "checklist", "title": "Set it up",
+         "items": ["I have a professional email address", "It's on my resume", "I checked it today"]},
+    ],
+    ("Digital Basics", "Strong passwords"): [
+        {"type": "text", "title": "Learn",
+         "body": "Aim for 12+ characters. Never reuse the same password across sites. A password manager (built into your phone) can remember them for you so you don't have to."},
+        {"type": "quiz", "title": "Check",
+         "questions": [
+             {"q": "Which is the strongest?", "options": ["Password1", "Rainbow!turtle-42-coffee", "MyName2020"], "answer": 1,
+              "why": "Longer + random words is much harder to guess than a short 'complex' password."},
+             {"q": "Should you use the same password everywhere?", "options": ["Yes, easier", "No, never"], "answer": 1,
+              "why": "One leak exposes every account."},
+         ]},
+    ],
+    ("Digital Basics", "Turn on 2-factor"): [
+        {"type": "text", "title": "Do",
+         "body": "2-factor authentication (2FA) means logging in requires a code from your phone in addition to your password. Turn it on for email first — email controls every 'reset password' link."},
+        {"type": "checklist", "title": "Enable 2FA",
+         "items": ["Primary email 2FA is ON", "Bank / benefits 2FA is ON", "I saved recovery codes somewhere safe"]},
+    ],
+    ("Handling Rejection & Setbacks", "Rejection isn't identity"): [
+        {"type": "text", "title": "Learn",
+         "body": "One 'no' isn't a verdict. In a real job search you'll get many nos before a yes. Your worth doesn't change with the outcome — the plan does."},
+        {"type": "reflection", "title": "Reflect",
+         "prompt": "What is the story you tell yourself after a setback? Write the new story you want to tell."},
+    ],
+    ("Handling Rejection & Setbacks", "Reset routine"): [
+        {"type": "checklist", "title": "Reset in 3 steps",
+         "items": ["Sleep", "Move (walk 10 – 20 minutes)", "Call one person in your Support Circle"]},
+        {"type": "resource", "title": "Do next",
+         "items": [{"label": "Open Support Circle", "route": "/app/section/support-circle"},
+                   {"label": "Open Identity & Confidence", "route": "/app/section/identity"}]},
+    ],
+}
 
 class LessonProgressIn(BaseModel):
     lesson_id: str
@@ -776,6 +934,9 @@ ALLOWED_MODEL_IDS = {m["id"] for m in CHATGPT_MODELS}
 
 @api_router.get("/bridge/models")
 async def list_bridge_models(user: dict = Depends(current_user)):
+    # Model selection is an admin-only capability. Participants use personalities.
+    if not user.get("is_owner"):
+        raise HTTPException(403, "Model selection is administrator-only. Use /api/bridge/personalities instead.")
     return {
         "models": CHATGPT_MODELS,
         "default": DEFAULT_BRIDGE_MODEL,
@@ -788,10 +949,130 @@ class BridgeModelIn(BaseModel):
 
 @api_router.put("/bridge/model")
 async def set_bridge_model(body: BridgeModelIn, user: dict = Depends(current_user)):
+    if not user.get("is_owner"):
+        raise HTTPException(403, "Model selection is administrator-only.")
     if body.model not in ALLOWED_MODEL_IDS:
         raise HTTPException(400, "Unknown model")
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"bridge_model": body.model}})
     return {"ok": True, "model": body.model}
+
+
+# ---- Bridge personalities (participant-facing) ----
+BRIDGE_PERSONALITIES = [
+    {"id": "gentle_mother", "label": "Gentle Mother",
+     "description": "Warm, patient, encouraging. Speaks with steady care.",
+     "tone": "Speak with warmth, patience, and unhurried care. Reassure without being cloying. Prioritize dignity and belonging."},
+    {"id": "tough_coach", "label": "Tough Coach",
+     "description": "Direct, motivating, honest. Focused on the next action.",
+     "tone": "Be direct, concrete, and motivating. Cut fluff. Name the next action clearly. Never harsh or shaming."},
+    {"id": "supportive_friend", "label": "Supportive Friend",
+     "description": "Easy, conversational, honest peer voice.",
+     "tone": "Speak like a trusted friend who has your back. Casual, plain language, empathetic, honest."},
+    {"id": "steady_guide", "label": "Steady Guide",
+     "description": "Calm, clear, professional. Great for navigating steps.",
+     "tone": "Be calm, structured, and clear. Focus on step-by-step navigation and organization."},
+]
+DEFAULT_PERSONALITY = "gentle_mother"
+PERSONALITY_BY_ID = {p["id"]: p for p in BRIDGE_PERSONALITIES}
+
+
+@api_router.get("/bridge/personalities")
+async def list_personalities(user: dict = Depends(current_user)):
+    return {
+        "personalities": BRIDGE_PERSONALITIES,
+        "default": DEFAULT_PERSONALITY,
+        "current": user.get("bridge_personality") or DEFAULT_PERSONALITY,
+    }
+
+
+class PersonalityIn(BaseModel):
+    personality: str
+
+@api_router.put("/bridge/personality")
+async def set_personality(body: PersonalityIn, user: dict = Depends(current_user)):
+    if body.personality not in PERSONALITY_BY_ID:
+        raise HTTPException(400, "Unknown personality")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"bridge_personality": body.personality}})
+    return {"ok": True, "personality": body.personality}
+
+
+# ---- Key Areas taxonomy → education & resources ----
+KEY_AREAS = [
+    {"id": "communication", "label": "Communication", "category": "life-skills"},
+    {"id": "budgeting", "label": "Budgeting", "category": "money"},
+    {"id": "credit", "label": "Credit", "category": "money"},
+    {"id": "employment", "label": "Employment", "category": "employment"},
+    {"id": "workplace-expectations", "label": "Workplace Expectations", "category": "employment"},
+    {"id": "housing", "label": "Housing", "category": "home"},
+    {"id": "benefits", "label": "Benefits", "category": "benefits"},
+    {"id": "health-literacy", "label": "Health Literacy", "category": "health"},
+    {"id": "digital-literacy", "label": "Digital Literacy", "category": "digital"},
+    {"id": "family-reconnection", "label": "Family Reconnection", "category": "identity"},
+    {"id": "parenting", "label": "Parenting", "category": "identity"},
+    {"id": "stress-coping", "label": "Stress & Coping", "category": "wellness"},
+    {"id": "healthy-relationships", "label": "Healthy Relationships", "category": "wellness"},
+    {"id": "scams-manipulation", "label": "Recognizing Scams & Manipulation", "category": "life-skills"},
+    {"id": "decision-making", "label": "Decision Making", "category": "life-skills"},
+    {"id": "anger-regulation", "label": "Anger / Emotional Regulation", "category": "wellness"},
+    {"id": "goal-setting", "label": "Goal Setting", "category": "identity"},
+    {"id": "organization", "label": "Organization", "category": "life-skills"},
+]
+
+# Key area → course-title matches for wiring (used at query time)
+KEY_AREA_COURSE_MAP = {
+    "communication": ["Interview Basics", "Resume for Fair-Chance Employers"],
+    "budgeting": ["Personal Budgeting 101"],
+    "credit": ["Personal Budgeting 101"],
+    "employment": ["Resume for Fair-Chance Employers", "Interview Basics"],
+    "workplace-expectations": ["Interview Basics"],
+    "digital-literacy": ["Digital Basics"],
+    "scams-manipulation": ["Recognizing Scams & Manipulation", "Digital Basics"],
+    "decision-making": ["Decision-Making Framework"],
+    "stress-coping": ["Stress & Emotional Awareness", "Handling Rejection & Setbacks"],
+    "healthy-relationships": ["Stress & Emotional Awareness"],
+    "anger-regulation": ["Stress & Emotional Awareness"],
+    "goal-setting": ["Decision-Making Framework", "Handling Rejection & Setbacks"],
+    "organization": ["Digital Basics"],
+}
+# Key area → resource category
+KEY_AREA_RESOURCE_MAP = {
+    "housing": ["Housing"], "benefits": ["Benefits"], "health-literacy": ["Health"],
+    "employment": ["Employment"], "family-reconnection": ["Recovery", "Legal"],
+    "stress-coping": ["Recovery", "Crisis"], "parenting": ["Recovery"],
+}
+# Key area → in-app tool routes
+KEY_AREA_TOOL_MAP = {
+    "employment": [{"label": "Employment & Income Record", "route": "/app/section/employment-record"},
+                   {"label": "Employment Readiness", "route": "/app/section/employment-readiness"}],
+    "budgeting": [{"label": "Income Record", "route": "/app/section/employment-record"}],
+    "housing": [{"label": "Home Hub", "route": "/app/section/home-hub"}],
+    "benefits": [{"label": "Benefits Hub", "route": "/app/section/benefits-hub"}],
+    "health-literacy": [{"label": "Health Hub", "route": "/app/section/health-hub"}],
+    "digital-literacy": [{"label": "Digital Life Readiness", "route": "/app/section/digital-readiness"}],
+    "goal-setting": [{"label": "Identity & Confidence", "route": "/app/section/identity"}],
+    "decision-making": [{"label": "Decisions & Life Skills", "route": "/app/section/life-skills"}],
+    "organization": [{"label": "Document Center", "route": "/app/section/documents"}],
+}
+
+
+@api_router.get("/education/key-areas")
+async def get_key_areas():
+    all_courses = await db.courses.find({}, {"_id": 0}).to_list(1000)
+    by_title = {c["title"]: c for c in all_courses}
+    all_resources = await db.resources.find({}, {"_id": 0}).to_list(1000)
+    by_cat = {}
+    for r in all_resources:
+        by_cat.setdefault(r["category"], []).append(r)
+    out = []
+    for a in KEY_AREAS:
+        courses = [{"id": by_title[t]["id"], "title": t, "category": by_title[t]["category"]}
+                   for t in KEY_AREA_COURSE_MAP.get(a["id"], []) if t in by_title]
+        resources = []
+        for cat in KEY_AREA_RESOURCE_MAP.get(a["id"], []):
+            resources.extend(by_cat.get(cat, []))
+        tools = KEY_AREA_TOOL_MAP.get(a["id"], [])
+        out.append({**a, "courses": courses, "resources": resources, "tools": tools})
+    return out
 
 
 @api_router.post("/bridge/chat")
@@ -804,7 +1085,9 @@ async def bridge_chat(body: BridgeIn, user: dict = Depends(current_user)):
         "role": "user", "content": body.message, "created_at": now_iso(),
     })
     ctx = await build_bridge_context(user)
-    system_message = BRIDGE_SYSTEM_BASE + "\n\n### PARTICIPANT CONTEXT (private; use to personalize)\n" + ctx
+    personality = PERSONALITY_BY_ID.get(user.get("bridge_personality") or DEFAULT_PERSONALITY, PERSONALITY_BY_ID[DEFAULT_PERSONALITY])
+    tone_line = f"\n\n### VOICE / PERSONALITY: {personality['label']}\n{personality['tone']}\n"
+    system_message = BRIDGE_SYSTEM_BASE + tone_line + "\n### PARTICIPANT CONTEXT (private; use to personalize)\n" + ctx
 
     # Resolve model: request override → user preference → default
     requested = (body.model or "").strip()

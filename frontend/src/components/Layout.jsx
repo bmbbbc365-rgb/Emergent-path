@@ -80,6 +80,11 @@ export default function Layout({ children }) {
         <div className="mt-2 text-[10px] text-white/40 px-2 flex items-center gap-1.5">
           <Shield className="w-3 h-3" /> Your journey. Your information. You control sharing.
         </div>
+        {user?.is_owner && (
+          <div className="mt-2 mx-2 rounded-md bg-[#D4AF37]/12 border border-[#D4AF37]/30 px-2 py-1.5 text-[10px] uppercase tracking-widest text-[#E8C7A0] flex items-center gap-1.5" data-testid="demo-badge">
+            <Shield className="w-3 h-3" /> Sample / demo data
+          </div>
+        )}
       </div>
     </aside>
   );
