@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Briefcase, Plus, Trash2, ClipboardList, FileText } from "lucide-react";
 import { toast } from "sonner";
+import HubLDTG from "@/components/HubLDTG";
 
 const APP_STATUS = ["applied","interviewing","offered","hired","closed","rejected","withdrawn"];
 
@@ -76,6 +77,32 @@ export default function EmploymentRecordDeep() {
           <div className="bmb-card p-4"><div className="overline">Net logged</div><div className="font-display text-3xl text-[#1B1033]">${totalNet.toFixed(2)}</div></div>
         </div>
       </div>
+
+      <HubLDTG
+        eyebrow="For your employment"
+        learn={[
+          { title: "Resume for fair-chance employers", description: "Format basics + language that works.", route: "/app/library" },
+          { title: "Interview Basics", description: "Common questions + answering about your record.", route: "/app/library" },
+          { title: "Personal Budgeting 101", description: "Fixed vs variable, 50/30/20 starter.", route: "/app/library" },
+        ]}
+        doActions={[
+          { label: "Scan / upload employment doc", route: "/app/documents/scan", testId: "ldtg-emp-scan" },
+          { label: "Add employer / job", onClick: () => setJOpen(true), testId: "ldtg-emp-add-job" },
+          { label: "Log pay", onClick: () => setIOpen(true), testId: "ldtg-emp-log-pay" },
+          { label: "Log application", onClick: () => setAOpen(true), testId: "ldtg-emp-log-app" },
+          { label: "Employment Readiness", route: "/app/section/employment-readiness", testId: "ldtg-emp-readiness" },
+        ]}
+        track={[
+          { label: "Active jobs", value: jobs.filter(x=>x.status==="active").length },
+          { label: "Applications", value: apps.length },
+          { label: "Pay logged", value: `$${totalGross.toFixed(2)}`, hint: `${income.length} entries` },
+          { label: "Resumes", value: resumes.length },
+        ]}
+        help={[
+          { label: "Approved workforce resources", route: "/app/section/independent-living" },
+          { label: "Ask Bridge about work", route: "/app" },
+        ]}
+      />
 
       <Tabs defaultValue="jobs">
         <TabsList className="bg-slate-100">

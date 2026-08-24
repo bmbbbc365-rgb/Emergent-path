@@ -946,6 +946,84 @@ async def link_requirement(doc_id: str, body: LinkRequirementIn, user: dict = De
     return {"ok": True}
 
 
+@api_router.delete("/documents/{doc_id}/link-requirement/{req_id}")
+async def unlink_requirement(doc_id: str, req_id: str, user: dict = Depends(current_user)):
+    """Remove the doc↔requirement relationship. Does NOT delete the original document.
+    Does NOT change requirement status.
+    """
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"], "is_deleted": False}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    req = await db.requirements.find_one({"id": req_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not req:
+        raise HTTPException(404, "Requirement not found")
+    await db.requirements.update_one(
+        {"id": req_id, "user_id": user["user_id"]}, {"$pull": {"document_ids": doc_id}},
+    )
+    await db.documents.update_one(
+        {"id": doc_id, "user_id": user["user_id"]},
+        {"$pull": {"related_record_ids": {"type": "requirement", "id": req_id}}},
+    )
+    return {"ok": True}
+
+
+@api_router.get("/requirements/{req_id}/documents")
+async def list_requirement_documents(req_id: str, user: dict = Depends(current_user)):
+    """Return docs attached to a requirement (participant-scoped; no sensitive values)."""
+    req = await db.requirements.find_one({"id": req_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not req:
+        raise HTTPException(404, "Requirement not found")
+    ids = req.get("document_ids") or []
+    if not ids:
+        return []
+    docs = await db.documents.find(
+        {"user_id": user["user_id"], "is_deleted": False, "id": {"$in": ids}},
+        {"_id": 0},
+    ).to_list(200)
+    return docs
+
+
+@api_router.get("/document-search")
+async def search_documents(
+    q: Optional[str] = None,
+    document_type: Optional[str] = None,
+    category: Optional[str] = None,
+    section: Optional[str] = None,
+    requirement_id: Optional[str] = None,
+    limit: int = 20,
+    user: dict = Depends(current_user),
+):
+    """Server-side participant-scoped document search used by the UI and by Bridge.
+    Never returns sensitive extracted values.
+    """
+    query: dict = {"user_id": user["user_id"], "is_deleted": False}
+    if document_type:
+        query["document_type"] = document_type
+    if category:
+        query["category"] = category
+    if section:
+        query["related_sections"] = section
+    if requirement_id:
+        req = await db.requirements.find_one({"id": requirement_id, "user_id": user["user_id"]}, {"_id": 0})
+        if not req:
+            return []
+        query["id"] = {"$in": req.get("document_ids") or []}
+    if q:
+        rx = re.compile(re.escape(q), re.IGNORECASE)
+        query["$or"] = [
+            {"label": {"$regex": rx}},
+            {"original_filename": {"$regex": rx}},
+            {"document_type": {"$regex": rx}},
+            {"document_type_label": {"$regex": rx}},
+            {"category": {"$regex": rx}},
+        ]
+    docs = await db.documents.find(query, {"_id": 0}).sort("uploaded_at", -1).to_list(max(1, min(limit, 100)))
+    # Ensure NO sensitive analysis leak in list output.
+    for d in docs:
+        d.pop("analysis_id", None)   # keep client from directly indexing analysis
+    return docs
+
+
 # ---------- Permissions ----------
 class SharingIn(BaseModel):
     resource_type: str            # section | document | employment_report | benefits_summary
@@ -1324,9 +1402,42 @@ async def build_bridge_context(user: dict) -> str:
     if s.get("housing"):
         h = s["housing"]
         lines.append(f"Housing: {h.get('type','—')} at {h.get('address','—')} (status: {h.get('status','—')}).")
+
+    # Document inventory (confirmed docs only, no sensitive values).
+    docs = await db.documents.find(
+        {"user_id": uid, "is_deleted": False},
+        {"_id": 0, "id": 1, "label": 1, "document_type": 1, "document_type_label": 1,
+         "category": 1, "related_sections": 1, "related_record_ids": 1,
+         "status": 1, "uploaded_at": 1, "confidence": 1},
+    ).sort("uploaded_at", -1).to_list(200)
+    if docs:
+        lines.append("\nDOCUMENT INVENTORY (confirmed metadata only; NEVER include SSN / DL# / member IDs / policy #s / account #s):")
+        for d in docs[:60]:
+            typ = d.get("document_type_label") or "Unclassified"
+            when = (d.get("uploaded_at") or "")[:10]
+            secs = ",".join(d.get("related_sections") or [])
+            rels = d.get("related_record_ids") or []
+            req_ids = [r.get("id") for r in rels if isinstance(r, dict) and r.get("type") == "requirement"]
+            status = d.get("status") or ""
+            row = f" - [{d['id']}] {d.get('label') or 'Untitled'} — {typ} · uploaded {when} · sections={secs} · status={status}"
+            if req_ids:
+                row += f" · linked-requirements={','.join(req_ids)}"
+            lines.append(row)
+        lines.append("When referring to a document, use markdown link `[View: <label>](/app/documents/<doc_id>)`. Only reference doc IDs that appear above — never invent one.")
+
+    # Requirements list (id + description + status + attached doc ids)
+    reqs = await db.requirements.find({"user_id": uid}, {"_id": 0, "id": 1, "description": 1, "type": 1, "status": 1, "document_ids": 1, "due_date": 1}).to_list(200)
+    if reqs:
+        lines.append("\nREQUIREMENTS (id · description · status · attached docs):")
+        for r in reqs[:60]:
+            dcount = len(r.get("document_ids") or [])
+            lines.append(f" - [{r['id']}] {r.get('description') or r.get('type')} · {r.get('status')} · docs={dcount}")
+
     lines.append("\nNAVIGATION MAP (use these exact routes when suggesting actions):")
     for label, route in BRIDGE_NAV:
         lines.append(f" - {label}: {route}")
+    lines.append(" - Scan a document: /app/documents/scan")
+    lines.append(" - View a specific document: /app/documents/<doc_id>")
     return "\n".join(lines)
 
 
@@ -1346,6 +1457,13 @@ BRIDGE_SYSTEM_BASE = (
     "ALWAYS clarify ambiguous questions before answering. For example, if the user asks 'Where can I get insurance?' "
     "first ask whether they mean health, dental, vision, life, auto, or renters, and then explain the education and "
     "approved-resource pathway inside the app.\n\n"
+    "DOCUMENTS: The PARTICIPANT CONTEXT below includes a DOCUMENT INVENTORY. When the user asks about their "
+    "documents ('do I have…', 'where is my…', 'find my…', 'what did I upload for…'), search that inventory "
+    "AND the REQUIREMENTS section to answer honestly. If a matching document exists, reference it with "
+    "`[View: <label>](/app/documents/<doc_id>)`. Do NOT invent doc IDs. If nothing matches, say so plainly "
+    "and offer `[Scan a document](/app/documents/scan)`. NEVER reveal SSNs, driver's-license numbers, member "
+    "IDs, policy numbers, or account numbers — those are masked and only the participant can reveal them "
+    "on the document detail page.\n\n"
     "END EVERY REPLY with a short 'Next steps' section containing 1-3 in-app action links using the exact markdown "
     "syntax `[Label](/app/route)` taken from the NAVIGATION MAP below. These become tappable buttons.\n\n"
     "Keep replies concise (usually under 180 words). Use short paragraphs and simple bullets."

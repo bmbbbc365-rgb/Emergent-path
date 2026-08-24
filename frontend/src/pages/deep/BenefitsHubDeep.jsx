@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { HandCoins, Plus, Trash2, Info, LifeBuoy, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
+import HubLDTG from "@/components/HubLDTG";
 
 const KINDS = ["health","dental","vision","life","disability","critical","accident","medicaid","medicare","auto","renters","other"];
 const EDUCATION = [
@@ -63,6 +64,28 @@ export default function BenefitsHubDeep() {
           </div>
         </div>
       </div>
+
+      <HubLDTG
+        eyebrow="For your benefits"
+        learn={[
+          { title: "How health insurance works", description: "Premiums, deductibles, copays, coinsurance — in plain language.", route: "/app/library" },
+          { title: "HMO vs PPO", description: "Networks, referrals, and out-of-network costs.", route: "/app/library" },
+          { title: "Medicaid basics", description: "Coverage, eligibility factors, and getting started.", route: "/app/library" },
+        ]}
+        doActions={[
+          { label: "Scan / upload benefits doc", route: "/app/documents/scan", testId: "ldtg-benefits-scan" },
+          { label: "Add a benefit", onClick: () => setOpen(true), testId: "ldtg-benefits-add" },
+          { label: "See 'When something happens'", route: "/app/section/benefits-hub", testId: "ldtg-benefits-scenarios" },
+        ]}
+        track={[
+          { label: "Active benefits", value: benefits.length },
+          { label: "Life scenarios", value: scenarios.length, hint: "Plain-language playbooks" },
+        ]}
+        help={[
+          { label: "Approved benefits resources", route: "/app/section/independent-living" },
+          { label: "Ask Bridge about my coverage", route: "/app" },
+        ]}
+      />
 
       <Tabs defaultValue="active">
         <TabsList className="bg-slate-100">

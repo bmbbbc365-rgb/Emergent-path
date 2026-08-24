@@ -18,6 +18,7 @@ import HomeHubDeep from "@/pages/deep/HomeHubDeep";
 import EmploymentRecordDeep from "@/pages/deep/EmploymentRecordDeep";
 import IdentityDeep from "@/pages/deep/IdentityDeep";
 import DocumentScan from "@/pages/DocumentScan";
+import DocumentDetail from "@/pages/DocumentDetail";
 
 const DEEP = {
   "requirements": Requirements,
@@ -50,6 +51,7 @@ function AppRouter() {
       <Route path="/login" element={<Login />} />
       <Route path="/app" element={<Protected><Dashboard /></Protected>} />
       <Route path="/app/documents/scan" element={<Protected><DocumentScan /></Protected>} />
+      <Route path="/app/documents/:id" element={<Protected><DocumentDetail /></Protected>} />
       <Route path="/app/section/:key" element={<Protected><DeepOrGeneric /></Protected>} />
       <Route path="/app/library" element={<Protected><Library /></Protected>} />
       <Route path="/app/library/:courseId" element={<Protected><CourseDetail /></Protected>} />

@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { House, Plus, Trash2, Zap, Wrench, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
+import HubLDTG from "@/components/HubLDTG";
 
 const UKINDS = ["electricity","water","gas","internet","trash","phone","other"];
 
@@ -57,6 +58,29 @@ export default function HomeHubDeep() {
           </div>
         </div>
       </div>
+
+      <HubLDTG
+        eyebrow="For getting established"
+        learn={[
+          { title: "Personal Budgeting 101", description: "Fixed vs variable, a 50/30/20 starter, one savings goal.", route: "/app/library" },
+          { title: "Digital Basics", description: "Professional email + strong passwords + 2FA.", route: "/app/library" },
+          { title: "Recognizing Scams & Manipulation", description: "Rental & utility scams to avoid.", route: "/app/library" },
+        ]}
+        doActions={[
+          { label: "Scan / upload lease or utility bill", route: "/app/documents/scan", testId: "ldtg-home-scan" },
+          { label: "Add housing record", onClick: () => setHOpen(true), testId: "ldtg-home-add-housing" },
+          { label: "Add utility", onClick: () => setUOpen(true), testId: "ldtg-home-add-utility" },
+        ]}
+        track={[
+          { label: "Housing records", value: housing.length },
+          { label: "Utilities", value: utils.length },
+          { label: "Est. monthly utilities", value: `$${totalMonthly.toFixed(0)}` },
+        ]}
+        help={[
+          { label: "Approved housing resources", route: "/app/section/independent-living" },
+          { label: "Ask Bridge about my housing", route: "/app" },
+        ]}
+      />
 
       <Tabs defaultValue="housing">
         <TabsList className="bg-slate-100">

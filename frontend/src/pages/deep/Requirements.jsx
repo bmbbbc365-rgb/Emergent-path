@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Trash2, Shield, DollarSign, Gavel, CalendarClock, User2, ClipboardList, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import HubLDTG from "@/components/HubLDTG";
+import RequirementEvidence from "@/components/RequirementEvidence";
 
 const TYPES = [
   { v: "supervision_officer", l: "Supervision officer (contact)", icon: User2 },
@@ -82,6 +84,31 @@ export default function Requirements() {
           <div className="bmb-card p-4"><div className="overline">Payment progress</div><ProgressBar pct={balancePct} /><div className="text-xs text-slate-500 mt-2">{balancePct}%</div></div>
         </div>
       </div>
+
+      <HubLDTG
+        eyebrow="For your requirements"
+        learn={[
+          { title: "Decision-Making Framework", description: "Pause → name → weigh → choose. Great for tough calls with supervision or court.", courseId: undefined, route: "/app/library" },
+          { title: "Handling Rejection & Setbacks", description: "Reset routine + Support Circle path.", route: "/app/library" },
+          { title: "Recognizing Scams & Manipulation", description: "Common red flags for fees, calls, or 'quick fix' offers.", route: "/app/library" },
+        ]}
+        doActions={[
+          { label: "Scan / upload evidence", route: "/app/documents/scan", testId: "ldtg-req-scan" },
+          { label: "Open Support Circle", route: "/app/section/support-circle", testId: "ldtg-req-support" },
+          { label: "Open Documents", route: "/app/section/documents", testId: "ldtg-req-docs" },
+        ]}
+        track={[
+          { label: "Requirement records", value: items.length, route: undefined },
+          { label: "Balance owed", value: `$${owed.toFixed(2)}`, hint: `${balancePct}% paid` },
+          { label: "Paid to date", value: `$${totalPaid.toFixed(2)}` },
+        ]}
+        help={[
+          { label: "Suicide & Crisis Lifeline", phone: "988", hint: "Free, confidential, 24/7." },
+          { label: "SAMHSA National Helpline", phone: "1-800-662-4357", hint: "Substance use / mental health." },
+          { label: "Approved re-entry resources", route: "/app/section/independent-living" },
+          { label: "Ask Bridge for help", route: "/app" },
+        ]}
+      />
 
       <Section eyebrow="Add a record" title="Requirement records"
         action={
@@ -167,6 +194,7 @@ export default function Requirements() {
                           {r.status !== "done" && <Button onClick={() => updateStatus(r.id, "done")} className="rounded-full h-8 bg-[#1B1033] hover:bg-[#2A1848] text-white text-xs" data-testid={`done-req-${r.id}`}>Mark done</Button>}
                           {r.status === "done" && <Button onClick={() => updateStatus(r.id, "open")} className="rounded-full h-8 bg-white border border-slate-300 text-[#1B1033] text-xs">Reopen</Button>}
                         </div>
+                        <RequirementEvidence requirement={r} onChanged={load} />
                       </div>
                     );
                   })}

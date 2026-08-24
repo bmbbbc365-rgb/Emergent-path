@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pill, ClipboardList, CalendarClock, Activity, ShieldAlert, Plus, Trash2, HeartPulse } from "lucide-react";
 import { toast } from "sonner";
+import HubLDTG from "@/components/HubLDTG";
 
 function ListItemCard({ icon: Icon, title, subtitle, meta, onDelete, testId }) {
   return (
@@ -93,6 +94,33 @@ export default function HealthHubDeep() {
           </div>
         </div>
       </div>
+
+      <HubLDTG
+        eyebrow="For your health"
+        learn={[
+          { title: "Stress & Emotional Awareness", description: "Name it → 4-7-8 breathing → journal your signals.", route: "/app/library" },
+          { title: "Handling Rejection & Setbacks", description: "Reset routine you can actually use.", route: "/app/library" },
+          { title: "Understanding appointments", description: "How to prep, questions to ask, follow-up.", route: "/app/library" },
+        ]}
+        doActions={[
+          { label: "Scan / upload health doc", route: "/app/documents/scan", testId: "ldtg-health-scan" },
+          { label: "Add medication", onClick: () => setMedOpen(true), testId: "ldtg-health-add-med" },
+          { label: "Add appointment", onClick: () => setApptOpen(true), testId: "ldtg-health-add-appt" },
+          { label: "Log wellness", onClick: () => setLogOpen(true), testId: "ldtg-health-log" },
+        ]}
+        track={[
+          { label: "Medications", value: meds.length },
+          { label: "Conditions", value: conditions.length },
+          { label: "Appointments", value: appts.length },
+          { label: "Wellness entries", value: logs.length },
+        ]}
+        help={[
+          { label: "988 Suicide & Crisis Lifeline", phone: "988", hint: "Free, confidential, 24/7." },
+          { label: "SAMHSA Helpline", phone: "1-800-662-4357", hint: "Substance use / mental health." },
+          { label: "Approved health resources", route: "/app/section/independent-living" },
+          { label: "Ask Bridge about my health records", route: "/app" },
+        ]}
+      />
 
       <Tabs defaultValue="meds">
         <TabsList className="bg-slate-100">
