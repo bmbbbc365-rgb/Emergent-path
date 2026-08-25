@@ -1444,8 +1444,8 @@ async def set_lesson_progress(body: LessonProgressIn, user: dict = Depends(curre
 
 
 # ---------- Resources ----------
-@api_router.get("/resources")
-async def list_resources(category: Optional[str] = None):
+@api_router.get("/resources-legacy")
+async def list_resources_legacy(category: Optional[str] = None):
     q = {} if not category else {"category": category}
     return await db.resources.find(q, {"_id": 0}).to_list(1000)
 
@@ -2907,6 +2907,14 @@ _bpv2.register(
 # ============= LEARNING ENGINE — server-scored quizzes, video-watch %, private journal =============
 import learning as _learning  # noqa: E402
 _learning.register(db, api_router, current_user, now_iso, new_id, _audit)
+
+
+# ============= RESOURCE REGISTRY (Batch A — Universal Resource System) =============
+import resources_v2 as _resources_v2  # noqa: E402
+_resources_v2.register(
+    db, api_router, current_user, require_role,
+    now_iso, new_id, _audit,
+)
 
 
 app.include_router(api_router)

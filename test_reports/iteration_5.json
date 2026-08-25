@@ -1,0 +1,58 @@
+{
+  "summary": "Batch A (Universal Resource Registry) full backend + frontend test. Found and fixed a CRITICAL route-collision that completely broke the feature (legacy GET /api/resources shadowed the new resources_v2 handler — the claimed rename to /resources-legacy had NOT actually been applied in server.py). After the fix: 15/15 new resources_v2 API tests pass, full regression suite 106/106 pass, and all frontend flows (hub, search, kind filters, pathway drilldown, detail, bookmark persistence, saved/unsave, disclaimers, find-help, sidebar) pass. Remaining defects: 9 legacy resource rows leak into the new registry with title=null (blank cards), and the crisis rails are under-populated (988 only on hub; SAMHSA missing on both rails).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/resources", "issue": "FIXED BY TESTER: the legacy raw-list handler at server.py:1447 was still registered as GET /resources and shadowed resources_v2's handler, so /api/resources returned a raw 9-item legacy list instead of {resources, count}. Every Resources/FindHelp screen was broken (ResourcesHub actually crashed on `crisis.length` of undefined). Renamed to /resources-legacy and repointed Library.jsx to /resources-legacy.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/resources", "issue": "9 pre-existing legacy rows (Housing/Employment/Food/Recovery/Legal/Health/Benefits/Transportation/Crisis) are returned with title=null because _shape() maps only `title` while legacy rows store `name`. They render as blank cards in /app/resources/browse and /app/resources/saved. Fix: `row.get('title') or row.get('name')` in _shape(), or exclude legacy rows (e.g. require kind field)."},
+      {"endpoint": "GET /api/resources?category=crisis", "issue": "Only 988 is category='crisis'. SAMHSA is category='recovery' and 911 is category='emergency', so the crisis rail cannot return the 3 promised cards. Legacy rows also use capitalized categories ('Crisis','Food') which never match the lowercase filter. Recommend filtering the crisis rail on is_crisis=true (add is_crisis to SAMHSA) instead of category."},
+      {"endpoint": "GET /api/resources/pathways", "issue": "Declared before GET /api/resources/{res_id} so it resolves correctly today, but the ordering is implicit and fragile — a future insert above it would make 'pathways'/'saved' resolve as an id."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ResourcesHub crisis rail", "issue": "Shows only 1 card (988). Spec requires 988 / 911 / SAMHSA. Caused by querying category=crisis only (backend minor issue above).", "selector": "[data-testid='crisis-rail'] [data-testid^='crisis-item-']", "priority": "MEDIUM"},
+      {"component": "FindHelp emergency rail", "issue": "Renders 988, 911 and 'Emergency Profile & QR Code' (an in-app tool card) instead of the SAMHSA National Helpline. An in-app tool should not appear in an emergency call-first rail.", "selector": "[data-testid^='fh-crisis-']", "priority": "MEDIUM"},
+      {"component": "ResourceCard / ResourcesSaved", "issue": "Legacy rows render as cards with an empty title (only summary visible). Reproduced on /app/resources/saved and on unfiltered browse.", "selector": "[data-testid^='resource-card-']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/app/resources hero and /app/find-help hero", "issues": ["The `.overline` eyebrow ('A PATH FORWARD · RESOURCES', 'ARKANSAS · COMMUNITY HELP') renders dark maroon on the dark plum/terracotta gradient — effectively invisible. The Tailwind text-[#F3E1D8]/80 class is being overridden by the global .overline color rule; needs !important or an inline style."]},
+      {"screen": "/app/resources kind filter pills", "issues": ["'FIND SUPPORT' pill uses #B76E79 text on white (~2.6:1) — fails WCAG AA for 14px text. 'Explore →' links on the pathway cards use the same low-contrast accent colors."]},
+      {"screen": "/app/find-help hero", "issues": ["'Open Arkansas 211' secondary button uses white text on a translucent white fill over the terracotta gradient — very low contrast versus the adjacent solid 'Call 211' button."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_resources_v2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "REVIEW the tester's fix: server.py legacy list_resources renamed to GET /api/resources-legacy and Library.jsx repointed to it. Decide if the legacy directory should instead be migrated into the new registry and the endpoint deleted.",
+    "Fix _shape() title fallback (`title or name`) or exclude the 9 legacy rows from the new registry so no blank cards render.",
+    "Make the crisis rails use is_crisis instead of category=crisis, and set is_crisis=true on SAMHSA National Helpline; exclude kind='tool' from the FindHelp emergency rail.",
+    "Fix the .overline color override on the dark gradient heroes (Resources hub + Find Help) and raise contrast on the FIND SUPPORT pill and 'Open Arkansas 211' button."
+  ],
+  "critical_code_review_comments": [
+    "resources_v2.register() schedules _seed() with asyncio.get_event_loop().create_task() inside a bare try/except that swallows all errors — if no loop is running at import time the seed silently never runs and the whole feature ships empty. Move seeding to a FastAPI startup/lifespan hook and log failures.",
+    "Route-name collisions like GET /resources are silent in FastAPI (first registration wins). Add a startup assertion or a test that enumerates duplicate (method, path) pairs in app.routes.",
+    "Legacy rows in db.resources have no `kind`/`active` fields and capitalized `category` values; the new query {'active': {'$ne': False}} sweeps them in. Normalize the collection with a one-time migration rather than relying on _shape() defaults.",
+    "GET /api/resources/{res_id} is declared after /saved and /pathways only by luck of ordering — consider a distinct prefix (/resources/item/{id}) or explicit path regex.",
+    "ResourcesHub does `setCrisis(r.data.resources)` with no array guard; when the shape is unexpected (as it was with the collision) the component throws instead of degrading. Default to []."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (renamed legacy GET /resources -> /resources-legacy to unshadow resources_v2)",
+    "/app/frontend/src/pages/Library.jsx (api.get('/resources') -> '/resources-legacy')",
+    "/app/backend/tests/test_resources_v2.py (new)",
+    "/app/backend/tests/backend_test.py (TestResources updated for the new/legacy split)"
+  ],
+  "success_rate": {"backend": "100% (15/15 new resources_v2 tests, 106/106 full suite after fix)", "frontend": "95% (all flows functional; crisis rail count + blank legacy cards are the failures)"},
+  "seed_data_creation": "Backend seed verified: 46 resources_v2 rows (13 learn / 7 tool / 26 support) + 9 legacy rows = 55 in db.resources. Created and deactivated a TEST_QA Resource row during admin CRUD testing. One stale saved_resources row for legacy resource c1a694fedfd644a4 exists for the demo user (renders as the blank saved card).",
+  "should_call_test_agent_after_fix": true,
+  "should_main_agent_self_test": false,
+  "test_credentials": "heatherprejean7325@gmail.com / Blueprint2026! (super_admin+participant); otheruser@example.com / Otherpass1! used to confirm POST /api/admin/resources returns 403 for a plain participant.",
+  "context_for_next_testing_agent": "Verified end-to-end: hub (8 pathways, search, 3 kind pills, My Saved, Find local help CTA), search q=211, kind filters (learn 12 / tool 7 / support 26 cards with matching badges), pathway=get-to-work (13 cards), detail page (kind badge, Arkansas pill, Source line, 'Visit official site', bookmark -> Saved -> persists across reload), saved page + unsave removal, all 5 disclaimer variants (legal/mental/safety/health/financial), /app/find-help (tel:211 anchor, arkansas211.org link, 19 need buckets, clickable resource names). Regression smoke PASSED on /app, /app/blueprint/intake, /app/assessments, /app/section/employment-readiness, /app/journal, /app/quiz/workplace_expectations, /app/section/documents, /app/section/digital-readiness, /app/library, /app/emergency. Only console error anywhere is a benign 401 on /api/auth/me from the pre-login page load. Run `pytest /app/backend/tests/ -q` for the full regression; test_batch_a::test_summary_and_completion flaked once on a network timeout then passed on rerun.",
+  "flaky_tests": ["tests/test_batch_a.py::TestFullBlueprint::test_summary_and_completion — one ConnectTimeout to the preview host (~1 in 2 runs at the time), passes on rerun"],
+  "rca_of_the_issue": "resources_v2.register() adds @api_router.get('/resources'), but server.py line 1447 already registered a GET /resources handler earlier in module execution. FastAPI/Starlette matches routes in registration order, so the legacy handler always won: /api/resources returned an unauthenticated raw 9-item list. The frontend reads data.resources, which was undefined, so browse/find-help rendered zero cards and ResourcesHub threw on crisis.length. Reproduced with `curl -H 'Authorization: Bearer <token>' $URL/api/resources` (returned a JSON array). Mitigation applied: renamed the legacy handler to GET /api/resources-legacy and repointed its only consumer (Library.jsx) so no behavior was lost; all 15 resources_v2 tests then passed."
+}

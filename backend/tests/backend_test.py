@@ -333,10 +333,16 @@ class TestEducation:
 
 # ---------------- Resources ----------------
 class TestResources:
-    def test_list(self, anon):
-        r = anon.get(f"{API}/resources", timeout=30)
+    def test_list_legacy(self, anon):
+        # legacy raw-list handler moved to /resources-legacy (Batch A route collision fix)
+        r = anon.get(f"{API}/resources-legacy", timeout=30)
         assert r.status_code == 200
         assert len(r.json()) >= 9
+
+    def test_list_v2(self, client):
+        r = client.get(f"{API}/resources", timeout=30)
+        assert r.status_code == 200
+        assert r.json()["count"] >= 40
 
 
 # ---------------- Documents ----------------

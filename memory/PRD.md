@@ -141,7 +141,30 @@ Server-scored quizzes, real video watch-percentage tracking, and a private parti
 - Updated `pages/EmploymentReadiness.jsx` to route `workplace_expectations` directly to `/app/quiz/workplace_expectations`.
 - `lib/doorways.js` — `wellness-journal` doorway now routes Do actions to `/app/journal` (was `/app/section/wellness`).
 
-## Digital Life Readiness section (Feb 2026)
+## Batch A — Universal Resource Registry (Feb 2026)
+The A Path Forward resource experience is now a real system, not a set of labels.
+
+### Backend
+- **`resources_v2.py`** — module registered from `server.py`. Classification: `kind ∈ {learn, tool, support}`. 8 pathways (`get-stable · get-healthy · get-organized · get-to-work · rebuild-money · rebuild-life · build-future · know-where`). Region, disclaimer_type, is_crisis, credential_pathway, tags, priority.
+- **Endpoints**: `GET /api/resources/pathways`, `GET /api/resources` (filter by q/kind/pathway/category/region/is_crisis), `GET /api/resources/{id}`, `GET /api/resources/saved`, `POST/DELETE /api/resources/{id}/save`. Admin CRUD at `POST /api/admin/resources` and `PATCH /api/admin/resources/{id}` (super_admin/program_admin only).
+- **Seed data**: 46 Arkansas + national resources — 211 · DHS · ADWS · JobLink · 988 · SAMHSA · 911 · Ready.gov · Red Cross · OSHA · Arkansas DEM · CFPB · FDIC Money Smart · IRS · IdentityTheft.gov · FAFSA · HealthCare.gov · MedlinePlus · Arkansas Health · FindTreatment.gov · CDC overdose · Arkansas Naloxone · Apprenticeship.gov · CareerOneStop · Arkansas Workforce Centers · DOL · DOL EBSA · Arkansas Labor · SBA · ASBTDC · SCORE · Arkansas SOS · Grants.gov · Candid · Arkansas EDC · GCFGlobal · FTC scams + 7 in-app TOOL cards (Full Blueprint · Assessments · Employment Readiness · Journal · Emergency QR · Document Center · Digital Life Readiness).
+- **Route collision fix**: legacy `GET /api/resources` renamed to `/api/resources-legacy` so the new rich shape (`{resources, count}`) wins on `/api/resources`. Library.jsx repointed.
+- **Legacy blank-card fix**: `_shape()` falls back `title → name → "Untitled resource"`; list endpoint now excludes rows without a `kind` field so 9 old capitalized-category rows no longer leak in.
+- **Crisis rail correctness**: rails query `is_crisis=true` (not category) and exclude `kind='tool'`. SAMHSA promoted with `is_crisis=true` so 988 · 911 · SAMHSA all appear.
+
+### Frontend
+- **`pages/Resources.jsx`** — `ResourcesHub` (plum→rose-gold gradient hero + search + crisis rail + 3 kind pills + Saved pill + Find local help CTA + 8 pathway cards + recently-saved shortcut), `ResourcesBrowse` (search/filter results with per-card kind badge, Arkansas pill, crisis flag), `ResourcesSaved` (my list), `ResourceDetail` (kind badge, disclaimer card per disclaimer_type, credential-pathway badge, tags, save/unsave, external site OR in-app tool button).
+- **`pages/FindHelp.jsx`** — Arkansas 211-forward page: plum→terracotta hero with `tel:211` and `arkansas211.org` links, crisis rail (988 · 911 · SAMHSA), and 13 need buckets (Food · Housing · Utilities · Transportation · Benefits · Legal · Employment · Healthcare · Mental Health · Recovery · Family · Veterans · Emergency) auto-populated by tag matching.
+- **Sidebar** — new "Resources" link with `Compass` icon above the SECTIONS list.
+- **Contrast fix** — eyebrow labels on the dark gradient heroes use inline styles (`rgba(243,225,216,0.85)`) to bypass the global `.overline` color rule.
+
+### Testing (iteration_5)
+- 15/15 new `test_resources_v2.py` tests pass. Full regression: 106/106 pass.
+- Frontend end-to-end: 100% functional after fixes — hub, search, kind filters, pathway drilldown, detail with disclaimers, bookmark persistence across reload, saved page, find-help with 211 tel: link, sidebar entry. Regression smoke: 10 core routes untouched (dashboard, blueprint intake, assessments, employment readiness, journal, quiz, documents, digital-readiness, library, emergency).
+
+### Batches B & C (deferred to next turns)
+- **Batch B**: deep learn content per category (Emergency + First Aid tooling, Financial deep learn, Health deep learn, Recovery deep learn, Career interactive tools, Technology deep learn) with real substantive Learn cards and Find Support routes.
+- **Batch C**: A Path Forward interactive toolkit (~40 named tools: budget/bill-calendar/debt-inventory/resume-builder/job-tracker/interview-prep/business-plan/grant-outline/etc.), Vault + calendar + employment integrations, Bridge resource-navigator upgrades (Bridge querying the registry directly), Business/Grants/Leadership deep content, final visual refinement pass.
 - **New participant hub** at `/app/section/digital-readiness` (`pages/DigitalHub.jsx`) — warm teal-terracotta gradient hero + a responsive 12-tile grid (1/2/3 columns on mobile/tablet/desktop). Every tile is a real doorway. Section footer includes a "practical readiness — not an official credential" reminder card.
 - **12 new doorway entries** in `lib/doorways.js` (`digital-*` slugs): Create an Email · Email Basics · Professional Email Template · Create a Spreadsheet · Internet Basics · Online Forms & Applications · Digital Documents · Upload & Download Files · Attach & Send Documents · School & Work Technology Basics · Password & Account Safety · Video Calls & Virtual Meetings. Each has plain-language Learn cards, real Do actions (some link out to Gmail / Outlook / Zoom / typing.com — opens in a new tab with `noopener,noreferrer`), Track links back into the app, and Bridge AI Get-help entries.
 - **Doorway shell extended** (`pages/Doorway.jsx`): renders a `<VideoPlaceholders />` block above Learn (~18 placeholder cards across the 12 doorways, each labeled "Video: ..." with a "Placeholder" pill) and a `<TemplateGallery />` block below Do with copy-to-clipboard cards (11 total templates across Email Template · Spreadsheet · Attach & Send · Online Forms).

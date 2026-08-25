@@ -33,6 +33,8 @@ import Doorway from "@/pages/Doorway";
 import Journal from "@/pages/Journal";
 import QuizRunner from "@/pages/QuizRunner";
 import DigitalHub from "@/pages/DigitalHub";
+import { ResourcesHub, ResourcesBrowse, ResourcesSaved, ResourceDetail } from "@/pages/Resources";
+import FindHelp from "@/pages/FindHelp";
 
 const DEEP = {
   "requirements": Requirements,
@@ -75,6 +77,11 @@ function AppRouter() {
       <Route path="/app/doorway/:slug" element={<Protected><Doorway /></Protected>} />
       <Route path="/app/journal" element={<Protected><Journal /></Protected>} />
       <Route path="/app/quiz/:quizId" element={<Protected><QuizRunner /></Protected>} />
+      <Route path="/app/resources" element={<Protected><ResourcesHub /></Protected>} />
+      <Route path="/app/resources/browse" element={<Protected><ResourcesBrowse /></Protected>} />
+      <Route path="/app/resources/saved" element={<Protected><ResourcesSaved /></Protected>} />
+      <Route path="/app/resources/:id" element={<Protected><ResourceDetail /></Protected>} />
+      <Route path="/app/find-help" element={<Protected><FindHelp /></Protected>} />
       <Route path="/app/emergency" element={<Protected><EmergencySettings /></Protected>} />
       <Route path="/app/transportation" element={<Protected><TransportationDeep /></Protected>} />
       <Route path="/staff/caseload" element={<Protected><StaffCaseload /></Protected>} />

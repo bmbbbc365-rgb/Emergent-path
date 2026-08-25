@@ -37,7 +37,7 @@ export function LibraryPage() {
     (async () => {
       const [c, r, k] = await Promise.all([
         api.get("/education/courses"),
-        api.get("/resources"),
+        api.get("/resources-legacy"),
         api.get("/education/key-areas"),
       ]);
       setCourses(c.data); setResources(r.data); setKeyAreas(k.data);

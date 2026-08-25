@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { SECTIONS } from "@/lib/sections";
-import { LayoutDashboard, Menu, LogOut, Shield, Bot, Library, Lock, X, Sparkles, ClipboardList } from "lucide-react";
+import { LayoutDashboard, Menu, LogOut, Shield, Bot, Library, Lock, X, Sparkles, ClipboardList, Compass } from "lucide-react";
 import BridgeChat from "@/components/BridgeChat";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -63,6 +63,7 @@ export default function Layout({ children }) {
         <NavItem to="/app" icon={LayoutDashboard} label="My Blueprint" testId="nav-dashboard" />
         <NavItem to="/app/blueprint/intake" icon={Sparkles} label="Full Blueprint" testId="nav-full-blueprint" />
         <NavItem to="/app/assessments" icon={ClipboardList} label="Assessments" testId="nav-assessments" />
+        <NavItem to="/app/resources" icon={Compass} label="Resources" testId="nav-resources" />
         {SECTIONS.map((s) => (
           <NavItem key={s.key} to={`/app/section/${s.key}`} icon={s.icon} label={s.label} testId={`nav-${s.key}`} />
         ))}
