@@ -525,9 +525,11 @@ EREADINESS_CATALOG = [
      "kind": "verifiable",
      "condition": "assessments_all_done"},
     {"key": "job_search_strategies",
-     "title": "Learn job-search strategies",
+     "title": "Learn job-search strategies (Resume + basics)",
      "kind": "verifiable",
-     "condition": "lesson_viewed:emp-job-search"},
+     # Matches the existing seeded course "Resume for Fair-Chance Employers" or any lesson
+     # whose title contains "job search"
+     "condition": "lesson_title:resume|job search"},
     {"key": "resume",
      "title": "Create or upload your resume",
      "kind": "evidence",
@@ -535,13 +537,15 @@ EREADINESS_CATALOG = [
     {"key": "interview_prep",
      "title": "Interview preparation",
      "kind": "verifiable",
-     "condition": "lesson_viewed:emp-interview"},
+     # Matches seeded course "Interview Basics"
+     "condition": "lesson_title:interview"},
     {"key": "professional_communication",
      "title": "Professional communication basics",
      "kind": "verifiable",
-     "condition": "lesson_viewed:emp-communication"},
+     # Matches "Digital Basics" (professional email) or any 'communication' lesson
+     "condition": "lesson_title:communication|digital basics|email"},
     {"key": "workplace_expectations",
-     "title": "Workplace expectations",
+     "title": "Workplace expectations knowledge check",
      "kind": "verifiable",
      "condition": "quiz_passed:workplace_expectations"},
     {"key": "certifications",
@@ -575,15 +579,37 @@ async def _evaluate_ereadiness(uid: str) -> list[dict]:
     completed_aids = {r["assessment_id"] for r in ares}
     all_assess = completed_aids >= set(ASSESSMENT_SCHEMAS.keys())
 
-    # Lessons viewed — reuse existing `course_progress` collection if present.
-    viewed_lessons: set[str] = set()
+    # Lessons viewed — reuse the existing `lesson_progress` collection.
+    # A lesson counts as "viewed" when either completed=True or progress>=90.
+    completed_lesson_ids: set[str] = set()
     try:
-        progs = await db.course_progress.find({"user_id": uid}, {"_id": 0}).to_list(200)
+        progs = await db.lesson_progress.find(
+            {"user_id": uid, "$or": [{"completed": True}, {"progress": {"$gte": 90}}]},
+            {"_id": 0}).to_list(500)
         for p in progs:
-            if p.get("percent_viewed", 0) >= 90 and p.get("lesson_id"):
-                viewed_lessons.add(p["lesson_id"])
+            if p.get("lesson_id"):
+                completed_lesson_ids.add(p["lesson_id"])
     except Exception:
         pass
+    completed_lesson_titles_lc: set[str] = set()
+    if completed_lesson_ids:
+        try:
+            lessons_cur = await db.lessons.find(
+                {"id": {"$in": list(completed_lesson_ids)}}, {"_id": 0, "title": 1, "course_id": 1}).to_list(500)
+            course_ids = {l.get("course_id") for l in lessons_cur if l.get("course_id")}
+            for l in lessons_cur:
+                if l.get("title"):
+                    completed_lesson_titles_lc.add(l["title"].lower())
+            # ALSO pull the parent course titles so "Interview Basics" is matchable when
+            # only a sub-lesson (e.g. "Common questions") was completed.
+            if course_ids:
+                courses_cur = await db.courses.find(
+                    {"id": {"$in": list(course_ids)}}, {"_id": 0, "title": 1}).to_list(500)
+                for c in courses_cur:
+                    if c.get("title"):
+                        completed_lesson_titles_lc.add(c["title"].lower())
+        except Exception:
+            pass
 
     # Quizzes passed
     quizzes_passed: set[str] = set()
@@ -616,8 +642,15 @@ async def _evaluate_ereadiness(uid: str) -> list[dict]:
         if item["kind"] == "verifiable":
             if cond == "assessments_all_done" and all_assess:
                 state = "completed"; evidence = {"assessments_done": sorted(completed_aids)}
-            elif cond.startswith("lesson_viewed:") and cond.split(":", 1)[1] in viewed_lessons:
+            elif cond.startswith("lesson_viewed:") and cond.split(":", 1)[1] in completed_lesson_ids:
                 state = "completed"; evidence = {"lesson": cond.split(":", 1)[1]}
+            elif cond.startswith("lesson_title:"):
+                # Any completed lesson whose title contains ANY of the pipe-separated keywords.
+                needles = [n.strip().lower() for n in cond.split(":", 1)[1].split("|") if n.strip()]
+                hit = next((t for t in completed_lesson_titles_lc
+                            if any(n in t for n in needles)), None)
+                if hit:
+                    state = "completed"; evidence = {"matched_lesson_title": hit}
             elif cond.startswith("quiz_passed:") and cond.split(":", 1)[1] in quizzes_passed:
                 state = "completed"; evidence = {"quiz": cond.split(":", 1)[1]}
             elif cond == "assessments_all_done" and completed_aids:

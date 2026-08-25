@@ -30,6 +30,8 @@ import FullBlueprintIntake from "@/pages/FullBlueprintIntake";
 import { AssessmentsHub, AssessmentRunner } from "@/pages/Assessments";
 import EmploymentReadiness from "@/pages/EmploymentReadiness";
 import Doorway from "@/pages/Doorway";
+import Journal from "@/pages/Journal";
+import QuizRunner from "@/pages/QuizRunner";
 
 const DEEP = {
   "requirements": Requirements,
@@ -69,6 +71,8 @@ function AppRouter() {
       <Route path="/app/assessments" element={<Protected><AssessmentsHub /></Protected>} />
       <Route path="/app/assessments/:id" element={<Protected><AssessmentRunner /></Protected>} />
       <Route path="/app/doorway/:slug" element={<Protected><Doorway /></Protected>} />
+      <Route path="/app/journal" element={<Protected><Journal /></Protected>} />
+      <Route path="/app/quiz/:quizId" element={<Protected><QuizRunner /></Protected>} />
       <Route path="/app/emergency" element={<Protected><EmergencySettings /></Protected>} />
       <Route path="/app/transportation" element={<Protected><TransportationDeep /></Protected>} />
       <Route path="/staff/caseload" element={<Protected><StaffCaseload /></Protected>} />

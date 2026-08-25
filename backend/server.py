@@ -2904,6 +2904,11 @@ _bpv2.register(
 )
 
 
+# ============= LEARNING ENGINE — server-scored quizzes, video-watch %, private journal =============
+import learning as _learning  # noqa: E402
+_learning.register(db, api_router, current_user, now_iso, new_id, _audit)
+
+
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware, allow_credentials=True,

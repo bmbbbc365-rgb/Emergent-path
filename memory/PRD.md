@@ -121,9 +121,31 @@ Emergent-managed object storage is now the single home for every participant fil
 - Assessment responses/results scoped by `participant_user_id`.
 - Hub visits scoped by `participant_user_id`.
 
-## What remains planned
-- P4 Learning engine (video watch %, assessments, cert PDF) — the ereadiness engine now depends on `course_progress` / `quiz_results`; wiring the actual lesson-viewing UI to those collections lands next.
-- P5 Calendar OAuth + secure messaging + email reminders (Resend)
-- P6 Journal · Voice input beyond Bridge (dictate journal entries)
-- P7 Bridge action proposals
-- P8 Program admin dashboards + reporting
+## Learning Engine + Journal Voice (Feb 2026)
+Server-scored quizzes, real video watch-percentage tracking, and a private participant journal with voice dictation. Employment Readiness gates now flip **on their own** when the underlying work is done.
+
+### Backend (`backend/learning.py`, wired from `server.py`)
+- `POST /api/quizzes/{id}/submit` — grades against server-side answers (never leaked to the client), stores in `quiz_results`, returns `{score_pct, passed, feedback[]}`. Passing `workplace_expectations` automatically flips the Employment Readiness item on the next `/api/ereadiness/progress` call.
+- `GET /api/quizzes/{id}` — returns questions + options but strips `answer` field before serializing.
+- `POST /api/education/lesson-progress-percent` — continuous video-watch ping. Progress only ever moves forward (scrubbing back doesn't lose earned progress). Auto-marks the lesson complete at ≥90%.
+- `GET/POST/PATCH/DELETE /api/journal/entries` — private journal. Body/mood/tags. `is_deleted` soft delete. Staff visibility explicitly denied — journal is never exposed via any staff endpoint.
+- Updated `_evaluate_ereadiness` in `blueprint_v2.py`:
+  - New `lesson_title:kw1|kw2` condition matches completed lessons OR their parent course by substring (e.g. "Interview Basics" course completion satisfies `interview_prep`).
+  - Existing `lesson_viewed:id` condition still works.
+  - Reads from the real `lesson_progress` collection (completed=True OR progress≥90).
+
+### Frontend
+- `pages/QuizRunner.jsx` at `/app/quiz/:quizId` — real quiz UI with disabled options after submit, per-question feedback, retry, and a "See my progress" button that jumps to Employment Readiness.
+- `pages/Journal.jsx` at `/app/journal` — private journal with the shared `<VoiceInput />` mic (Web Speech + Whisper fallback), typed mood 1-5, per-entry delete. Interim voice transcript shows live in the textarea.
+- `pages/Library.jsx` — added `<VideoBlock />` block type. Renders a real `<video>` element that pings the server every 5% of watch progress and on `ended`.
+- Updated `pages/EmploymentReadiness.jsx` to route `workplace_expectations` directly to `/app/quiz/workplace_expectations`.
+- `lib/doorways.js` — `wellness-journal` doorway now routes Do actions to `/app/journal` (was `/app/section/wellness`).
+
+### Tests (`tests/test_learning_journal.py` — 8/8 pass, full regression 90/90 pass)
+- Quiz public endpoint does not leak correct answers.
+- Passing the quiz flips `workplace_expectations` to `completed`.
+- Failing the quiz does NOT flip the gate.
+- Video watch progress only moves forward; auto-completes at 90%.
+- Interview lesson completion (via course-title join) flips `interview_prep`.
+- Journal entries are isolated per participant (other users can't read or delete).
+- Empty-body and out-of-bounds mood rejected.

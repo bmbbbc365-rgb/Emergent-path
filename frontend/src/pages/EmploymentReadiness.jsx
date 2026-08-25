@@ -141,6 +141,15 @@ function ItemAction({ item, onAttest, busy }) {
       </Link>
     );
   }
+  if (item.item_key === "workplace_expectations") {
+    return (
+      <Link to="/app/quiz/workplace_expectations">
+        <Button variant="outline" size="sm" className="mt-3" data-testid={`ereadiness-open-${item.item_key}`}>
+          Take the quiz →
+        </Button>
+      </Link>
+    );
+  }
   if (item.kind === "verifiable") {
     return (
       <Link to="/app/library">

@@ -146,6 +146,61 @@ function TextBlock({ b }) {
     </div>
   );
 }
+function VideoBlock({ b, lessonId }) {
+  // Pings watch percentage to server every ~5 seconds. When % >= 90 the server
+  // auto-marks the lesson complete — ereadiness gates flip automatically.
+  const [pct, setPct] = React.useState(0);
+  const [saved, setSaved] = React.useState(0);
+  const videoRef = React.useRef(null);
+  React.useEffect(() => {
+    let lastSent = 0;
+    const v = videoRef.current;
+    if (!v) return;
+    const onTime = () => {
+      if (!v.duration) return;
+      const cur = Math.round((v.currentTime / v.duration) * 100);
+      setPct(cur);
+      if (cur - lastSent >= 5) {
+        lastSent = cur;
+        api.post("/education/lesson-progress-percent", {
+          lesson_id: lessonId, percent_viewed: cur,
+          last_position_seconds: Math.round(v.currentTime),
+        }).then((r) => setSaved(r.data?.progress || cur)).catch(() => {});
+      }
+    };
+    const onEnded = () => {
+      api.post("/education/lesson-progress-percent", {
+        lesson_id: lessonId, percent_viewed: 100,
+        last_position_seconds: Math.round(v.currentTime || 0),
+      }).then(() => setSaved(100)).catch(() => {});
+    };
+    v.addEventListener("timeupdate", onTime);
+    v.addEventListener("ended", onEnded);
+    return () => {
+      v.removeEventListener("timeupdate", onTime);
+      v.removeEventListener("ended", onEnded);
+    };
+  }, [lessonId]);
+  return (
+    <div className="rounded-xl bg-black/95 border border-slate-200 p-4" data-testid={`video-block-${lessonId}`}>
+      <div className="flex items-center gap-2"><Play className="w-4 h-4 text-[#B76E79]" /><div className="overline text-white/80">Video</div></div>
+      {b.title && <div className="font-display text-lg text-white mt-1">{b.title}</div>}
+      <video
+        ref={videoRef}
+        controls
+        preload="metadata"
+        className="mt-3 w-full rounded-lg"
+        src={b.video_url}
+        poster={b.poster}
+        data-testid="lesson-video"
+      />
+      <div className="mt-2 flex items-center justify-between text-[11px] text-white/70">
+        <span>Watched: {pct}%</span>
+        <span>{saved >= 90 ? "Lesson complete ✓" : `Saved: ${saved}%`}</span>
+      </div>
+    </div>
+  );
+}
 function ReflectionBlock({ b, val, onChange }) {
   return (
     <div className="rounded-xl bg-[#B76E79]/6 border border-[#EBD3D0] p-4">
@@ -267,7 +322,8 @@ function QuizBlock({ b, val, onChange }) {
 }
 
 const BLOCK_COMPONENTS = { text: TextBlock, reflection: ReflectionBlock, worksheet: WorksheetBlock,
-  checklist: ChecklistBlock, scenario: ScenarioBlock, resource: ResourceBlock, quiz: QuizBlock };
+  checklist: ChecklistBlock, scenario: ScenarioBlock, resource: ResourceBlock, quiz: QuizBlock,
+  video: VideoBlock };
 
 export function CourseDetail() {
   const { courseId } = useParams();
@@ -344,7 +400,7 @@ export function CourseDetail() {
                   {contentBlocks.map((b, i) => {
                     const C = BLOCK_COMPONENTS[b.type] || TextBlock;
                     const key = `${active.id}::${i}`;
-                    return <C key={i} b={b} val={blockState[key]} onChange={(v) => setBlockState((s) => ({...s, [key]: v}))} onNav={(r) => nav(r)} />;
+                    return <C key={i} b={b} val={blockState[key]} onChange={(v) => setBlockState((s) => ({...s, [key]: v}))} onNav={(r) => nav(r)} lessonId={active.id} />;
                   })}
                 </div>
               ) : (

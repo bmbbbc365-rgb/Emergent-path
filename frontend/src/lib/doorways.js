@@ -70,10 +70,11 @@ export const DOORWAYS = {
       { title: "Prompts if you're stuck", description: "One thing that went well · one thing that was hard · one thing I need tomorrow." },
     ],
     doActions: [
-      { label: "Write today's entry", route: "/app/section/wellness" },
+      { label: "Write today's entry", route: "/app/journal" },
+      { label: "Speak an entry (voice)", route: "/app/journal" },
     ],
     track: [
-      { label: "Entries this week", value: "Open →", route: "/app/section/wellness" },
+      { label: "Journal entries", value: "Open →", route: "/app/journal" },
     ],
     help: [{ label: "Ask Bridge AI for a prompt", route: "/app?bridge=journal-prompt" }],
   },
