@@ -107,7 +107,7 @@ export default function JourneyStrip({ stage, welcomeSeen, onOpenJourney }) {
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-[#5C3D48] italic max-w-lg">
-          The door is here. <span className="font-semibold text-[#4a2a5a]">The key belongs to you.</span>
+          You forged the key to break your chains; now cross the bridge to conquer your future. Step through—you earned this horizon.
         </p>
         <button
           onClick={onOpenJourney}

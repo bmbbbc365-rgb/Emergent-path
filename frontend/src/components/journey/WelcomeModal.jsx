@@ -44,7 +44,7 @@ export default function WelcomeModal({ open, onBegin }) {
           </div>
           <div className="px-7 py-5 bg-[#1B1033]/40 border-t border-white/10 flex items-center justify-between gap-3">
             <p className="text-[11px] text-[#F3E1D8]/80 italic">
-              The door is waiting. The key is yours to build.
+              You forged the key to break your chains; now cross the bridge to conquer your future. Step through—you earned this horizon.
             </p>
             <Button
               onClick={onBegin}

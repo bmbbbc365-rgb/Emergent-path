@@ -201,7 +201,7 @@ function GraduationCelebration({ onOpenTransition }) {
             </button>
           </div>
           <p className="mt-4 text-xs text-[#5C3D48] italic max-w-md">
-            The door is here. The key belongs to you. Continuation is your choice — not a requirement.
+            You forged the key to break your chains; now cross the bridge to conquer your future. Step through—you earned this horizon.
           </p>
         </div>
         <div className="flex items-center justify-center">
@@ -342,7 +342,7 @@ function TransitionPage({ state, onBack, onDecide }) {
       </div>
 
       <div className="text-center text-xs text-slate-500 italic">
-        The door is here. <span className="font-semibold text-[#4a2a5a]">The key belongs to you.</span>
+        You forged the key to break your chains; now cross the bridge to conquer your future. Step through—you earned this horizon.
       </div>
     </div>
   );
