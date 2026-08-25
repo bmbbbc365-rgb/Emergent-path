@@ -1,7 +1,8 @@
-"""Server-scored quiz runner. Fetches the quiz (options only, no correct answers),
-lets the participant answer, submits, and shows real feedback. Wired to Employment
-Readiness — a pass automatically flips the workplace_expectations gate.
-"""
+/**
+ * Server-scored quiz runner. Fetches the quiz (options only, no correct answers),
+ * lets the participant answer, submits, and shows real feedback. Wired to Employment
+ * Readiness — a pass automatically flips the workplace_expectations gate.
+ */
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
