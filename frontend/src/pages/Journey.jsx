@@ -234,18 +234,17 @@ function LockedDoorSection({ stage }) {
         background: "linear-gradient(135deg, #FBF7F2 0%, #F3E1D8 100%)",
         border: "1px solid #E4CDBF",
       }}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-center">
         <div>
           <div className="overline text-[#8E4E5A]">A door for later</div>
-          <h2 className="font-display text-2xl md:text-3xl text-[#1B1033] mt-2 leading-tight">
-            Something is waiting for you.
-          </h2>
-          <p className="text-slate-700 mt-3 leading-relaxed max-w-md">
-            When you complete your A Path Forward journey and your team recognizes
-            you're ready, this door will unlock — and you'll be introduced to
-            Build My Blueprint™, an expanded experience for long-term independence.
-          </p>
-          <div className="mt-4 rounded-xl bg-white border border-[#E4CDBF] p-4">
+          <blockquote className="mt-3 relative pl-5 border-l-4 border-[#B76E79]/70"
+            data-testid="locked-quote">
+            <p className="font-display text-xl md:text-2xl text-[#1B1033] italic leading-snug">
+              &ldquo;You forged the key to break your chains; now cross the bridge
+              to conquer your future. Step through—you earned this horizon.&rdquo;
+            </p>
+          </blockquote>
+          <div className="mt-5 rounded-xl bg-white border border-[#E4CDBF] p-4">
             <div className="flex items-center gap-2 text-[#8E4E5A] text-xs font-semibold uppercase tracking-wider">
               <Lock className="w-3.5 h-3.5" /> Unlock conditions
             </div>
@@ -257,7 +256,12 @@ function LockedDoorSection({ stage }) {
           </div>
         </div>
         <div className="flex items-center justify-center">
-          <BlueprintDoor unlocked={false} variant="hero" />
+          <img
+            src="/journey-brand.png"
+            alt="A Path Forward · Build My Blueprint — Reentry · Transformation"
+            className="w-full max-w-sm h-auto rounded-2xl shadow-xl"
+            data-testid="journey-brand-image"
+          />
         </div>
       </div>
     </div>
