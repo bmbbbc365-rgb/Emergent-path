@@ -89,8 +89,8 @@ export default function BlueprintDoor({ unlocked, onUnlock, variant = "hero" }) 
               {/* Copy inside door */}
               <div className="absolute inset-x-0 top-16 text-center px-6">
                 <div className="overline text-[#8E4E5A]">Build My Blueprint™</div>
-                <div className="font-display text-xl text-[#1B1033] leading-tight mt-1">
-                  {unlocked ? "Ready to open." : "Waiting for your key."}
+                <div className="font-display text-base text-[#1B1033] leading-snug mt-1 italic px-1">
+                  You forged the key to break your chains; now cross the bridge to conquer your future. Step through—you earned this horizon.
                 </div>
                 {!unlocked && (
                   <div className="mt-4 flex flex-col items-center gap-2 text-[#8E4E5A]">

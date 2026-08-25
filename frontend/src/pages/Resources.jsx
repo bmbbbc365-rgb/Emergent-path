@@ -194,6 +194,36 @@ export function ResourcesHub() {
         </div>
       </div>
 
+      {/* Category deep pages — Batch B */}
+      <div className="mt-8" data-testid="category-strip">
+        <div className="overline mb-3">Deep dives · Learn + Find Support</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+          {[
+            { key: "emergency",  label: "Emergency & Safety",  blurb: "First aid, go-bag, disaster prep.",             accent: "#B85A4B" },
+            { key: "financial",  label: "Financial Wellness",  blurb: "Budgets, credit, taxes, housing counselors.",   accent: "#B5851F" },
+            { key: "health",     label: "Health & Wellness",   blurb: "Coverage, chronic care, mental screenings.",    accent: "#4E8C86" },
+            { key: "recovery",   label: "Recovery",            blurb: "Science, harm reduction, peer community.",      accent: "#7C4E80" },
+            { key: "employment", label: "Career & Employment", blurb: "Resumes, fair-chance jobs, apprenticeships.",   accent: "#3B7A8A" },
+            { key: "technology", label: "Technology & Digital",blurb: "Free digital literacy, scam-proofing.",         accent: "#5F8CA5" },
+          ].map((c) => (
+            <Link key={c.key} to={`/app/resources/category/${c.key}`}
+              className="rounded-2xl p-4 md:p-5 bg-white border-l-4 hover:-translate-y-0.5 transition-transform"
+              style={{ borderLeftColor: c.accent, boxShadow: "0 1px 3px rgba(27,16,51,0.06)" }}
+              data-testid={`category-card-${c.key}`}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: `${c.accent}18`, color: c.accent }}>
+                <Lightbulb className="w-5 h-5" />
+              </div>
+              <div className="font-display text-base text-[#1B1033] mt-2">{c.label}</div>
+              <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">{c.blurb}</p>
+              <div className="mt-2 text-xs inline-flex items-center gap-1" style={{ color: c.accent }}>
+                Open <ArrowRight className="w-3 h-3" />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+
       {/* Saved shortcut */}
       {saved.length > 0 && (
         <div className="mt-8" data-testid="dash-saved">

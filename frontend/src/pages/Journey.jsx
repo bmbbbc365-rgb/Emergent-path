@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import confetti from "canvas-confetti";
 import {
   ArrowRight, ArrowLeft, Check, Lock, Sparkles, ExternalLink,
   Trophy, Award, Compass, Flag, Star,
@@ -24,6 +25,7 @@ export default function Journey() {
   const nav = useNavigate();
   const [snap, setSnap] = useState(null);
   const [showTransition, setShowTransition] = useState(false);
+  const celebratedFiredRef = useRef(false);
 
   const load = async () => {
     try {
@@ -32,6 +34,19 @@ export default function Journey() {
     } catch { toast.error("Could not load journey"); }
   };
   useEffect(() => { load(); }, []);
+
+  // Fire the confetti once — the FIRST time a graduated participant lands on
+  // this page. Persist server-side so subsequent visits stay dignified.
+  useEffect(() => {
+    if (!snap || celebratedFiredRef.current) return;
+    const s = snap.state || {};
+    if (s.graduation_approved && !s.graduation_celebrated) {
+      celebratedFiredRef.current = true;
+      fireGoldShimmer();
+      // Persist. Silent failure — don't block the reveal.
+      api.post("/journey/graduation-celebrated").catch(() => {});
+    }
+  }, [snap]);
 
   const openTransition = async () => {
     try {
@@ -356,4 +371,29 @@ function InfoCard({ eyebrow, title, body }) {
       <p className="text-sm text-slate-600 mt-2 leading-relaxed">{body}</p>
     </div>
   );
+}
+
+/**
+ * Subtle, dignified gold shimmer — a small burst of warm gold and cream
+ * particles from just above the "You built the key." hero. Runs ~1.4s.
+ * Uses `canvas-confetti` — creates its own transient canvas, no DOM cleanup.
+ */
+function fireGoldShimmer() {
+  const GOLDS = ["#F5D28F", "#D4AF37", "#F3E1D8", "#EED2E0", "#FBF3E9"];
+  const defaults = {
+    startVelocity: 32,
+    spread: 70,
+    ticks: 220,
+    gravity: 0.7,
+    scalar: 0.9,
+    disableForReducedMotion: true, // honor OS reduced-motion setting
+    colors: GOLDS,
+  };
+  // Center burst
+  confetti({ ...defaults, particleCount: 70, origin: { x: 0.5, y: 0.25 } });
+  // Left and right side sparkles a moment later
+  window.setTimeout(() => {
+    confetti({ ...defaults, particleCount: 35, angle: 60, origin: { x: 0.15, y: 0.3 } });
+    confetti({ ...defaults, particleCount: 35, angle: 120, origin: { x: 0.85, y: 0.3 } });
+  }, 220);
 }

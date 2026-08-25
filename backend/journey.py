@@ -75,6 +75,8 @@ def _default_state(user_id: str) -> dict:
         "transition_offered_at": None,       # auto-set on graduation approval
         "transition_viewed": False,          # participant clicked "See What's Next"
         "transition_viewed_at": None,
+        "graduation_celebrated": False,      # one-time confetti reveal
+        "graduation_celebrated_at": None,
         "interested_in_continuing": None,    # True | False | None (undecided)
         "decision_at": None,
         "decision_note": None,
@@ -217,6 +219,24 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
              "$setOnInsert": {**{k: v for k, v in _default_state(user["user_id"]).items()
                                   if k not in ("welcome_seen", "welcome_seen_at", "updated_at")}}},
             upsert=True,
+        )
+        return await _hydrate(user["user_id"])
+
+    @api_router.post("/journey/graduation-celebrated")
+    async def journey_grad_celebrated(user: dict = Depends(current_user)):
+        """Marks that the participant has seen the one-time confetti reveal.
+        Only meaningful after graduation; silently no-ops otherwise so the
+        client can call this unconditionally on Journey mount."""
+        state = await _get_or_init(user["user_id"])
+        if not state.get("graduation_approved"):
+            return await _hydrate(user["user_id"])
+        await db.journey_state.update_one(
+            {"participant_user_id": user["user_id"]},
+            {"$set": {
+                "graduation_celebrated": True,
+                "graduation_celebrated_at": now_iso(),
+                "updated_at": now_iso(),
+            }},
         )
         return await _hydrate(user["user_id"])
 

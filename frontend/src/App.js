@@ -37,6 +37,7 @@ import { ResourcesHub, ResourcesBrowse, ResourcesSaved, ResourceDetail } from "@
 import FindHelp from "@/pages/FindHelp";
 import Journey from "@/pages/Journey";
 import AdminJourney from "@/pages/AdminJourney";
+import CategoryHub from "@/pages/CategoryHub";
 
 const DEEP = {
   "requirements": Requirements,
@@ -82,6 +83,7 @@ function AppRouter() {
       <Route path="/app/resources" element={<Protected><ResourcesHub /></Protected>} />
       <Route path="/app/resources/browse" element={<Protected><ResourcesBrowse /></Protected>} />
       <Route path="/app/resources/saved" element={<Protected><ResourcesSaved /></Protected>} />
+      <Route path="/app/resources/category/:category" element={<Protected><CategoryHub /></Protected>} />
       <Route path="/app/resources/:id" element={<Protected><ResourceDetail /></Protected>} />
       <Route path="/app/find-help" element={<Protected><FindHelp /></Protected>} />
       <Route path="/app/journey" element={<Protected><Journey /></Protected>} />
