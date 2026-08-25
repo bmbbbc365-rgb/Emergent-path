@@ -655,11 +655,13 @@ async def refresh_reminders(uid: str) -> dict:
 class NoteIn(BaseModel):
     body: str
     visibility: str  # participant | shared | internal
+    attachment_document_ids: list[str] = []
 
 
 class NoteUpdate(BaseModel):
     body: Optional[str] = None
     visibility: Optional[str] = None
+    attachment_document_ids: Optional[list[str]] = None
 
 
 class ReminderPatch(BaseModel):
@@ -689,12 +691,21 @@ def register_notes_reminders():
         if not en: raise HTTPException(404, "Enrollment not found")
         if not await _staff_can(user, en["participant_user_id"]):
             raise HTTPException(403, "Out of scope")
+        # Attachments MUST belong to this participant. This prevents staff
+        # from pinning another participant's file into a note as a data-leak vector.
+        att_ids: list[str] = []
+        for did in (body.attachment_document_ids or [])[:20]:
+            d = await db.documents.find_one(
+                {"id": did, "user_id": en["participant_user_id"], "is_deleted": False},
+                {"_id": 0, "id": 1})
+            if d: att_ids.append(d["id"])
         note = {
             "id": new_id("note_"), "enrollment_id": enrollment_id,
             "participant_user_id": en["participant_user_id"],
             "organization_id": en.get("org_id"), "program_id": en.get("program_id"),
             "author_user_id": user["user_id"], "author_role": user.get("_effective_role"),
             "body": body.body, "visibility": body.visibility,
+            "attachment_document_ids": att_ids,
             "created_at": now_iso(), "updated_at": now_iso(),
         }
         await db.staff_notes.insert_one(note); note.pop("_id", None)
@@ -714,6 +725,14 @@ def register_notes_reminders():
         if body.visibility is not None:
             if body.visibility not in _VISIBILITIES: raise HTTPException(400, "Invalid visibility")
             upd["visibility"] = body.visibility
+        if body.attachment_document_ids is not None:
+            att_ids: list[str] = []
+            for did in body.attachment_document_ids[:20]:
+                d = await db.documents.find_one(
+                    {"id": did, "user_id": note["participant_user_id"], "is_deleted": False},
+                    {"_id": 0, "id": 1})
+                if d: att_ids.append(d["id"])
+            upd["attachment_document_ids"] = att_ids
         upd["updated_at"] = now_iso()
         await db.staff_notes.update_one({"id": note_id}, {"$set": upd})
         return await db.staff_notes.find_one({"id": note_id}, {"_id": 0})

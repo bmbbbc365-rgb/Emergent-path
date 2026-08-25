@@ -51,10 +51,37 @@ New `reminders` collection.
 - Frontend new: `pages/deep/TransportationDeep.jsx`, `components/StaffNotes.jsx`, `components/ParticipantAlerts.jsx`.
 - Frontend edited: `App.js` (`/app/transportation` route), `Dashboard.jsx` (ParticipantAlerts at top), `Staff.jsx` (StaffNotes on participant detail).
 
+## Private File & Media Storage (Feb 2026)
+Emergent-managed object storage is now the single home for every participant file — documents, evidence, avatars — with **short-lived (15 min) HMAC-signed URLs** replacing any long-lived token in URL bars.
+
+### Backend
+- `server.py` — HMAC helpers `_sign_download / _verify_download / _mint_signed_url`; scopes: `owner | staff | avatar`.
+- New endpoints:
+  - `POST /api/documents/{doc_id}/signed-url` (owner only — 404 if not yours).
+  - `POST /api/staff/documents/{doc_id}/signed-url` (staff — caseload gated + audit-logged).
+  - `GET /api/documents/download-signed/{doc_id}?uid&scope&exp&sig` (cookie-less, sig-verified, staff-scope re-checks caseload at fetch time so revoked bindings can't replay).
+  - `POST /api/profile/avatar` (5MB, PNG/JPEG/WEBP/GIF, deterministic path `bmb-reentry/avatars/{user_id}.{ext}`).
+  - `GET /api/profile/avatar-url` (self) and `GET /api/profile/avatar-url/{target_user_id}` (staff / same caseload only).
+- Consultant note attachments: `NoteIn/NoteUpdate.attachment_document_ids` — attachments MUST belong to the enrollment's participant (prevents staff pinning cross-participant files as a leak vector).
+- Legacy `GET /api/documents/{doc_id}/download` still works with a session cookie (owner only) and returns 410 if a doc has no storage path.
+
+### Frontend
+- `DocumentDetail.jsx` — "View original" now requests `/documents/{id}/signed-url` and opens the returned short-lived URL. Removed `?auth={session_token}` query pattern (was leaking a 7-day cookie into the URL bar).
+
+### Guarantees (test-verified)
+- Owner sig → 200; tampered sig → 401; expired `exp` → 401; wrong scope → 400; cross-participant owner signed-URL → 404; staff signed-URL out of caseload → 403; avatar cross-tenant → 403; legacy session route still gated (401 without auth).
+- Sensitive extracted fields still masked by default and only revealable via the existing `/reveal-sensitive` route — never in list responses, never in signed URLs.
+
+### Tests
+- `tests/test_signed_urls.py` — 8 tests, pass.
+- Full backend regression (`backend_test.py` + `test_retest_bridge.py`) — 60/60 pass.
+
 ## Cross-user isolation (verified)
 - `otheruser` → `/api/staff/participants/{id}/notes` = 403.
 - `otheruser` → `/api/notes/mine` returns only their own (empty).
 - `otheruser` → participant-scoped `/api/reminders` returns only their own (empty).
+- `otheruser` → owner signed-URL for owner's doc = 404 (cross-participant isolation).
+- `otheruser` → `/api/profile/avatar-url/{owner_uid}` = 403.
 
 ## What remains planned
 - P4 Learning engine (video watch %, assessments, cert PDF)

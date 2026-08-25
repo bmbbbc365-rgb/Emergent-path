@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import base64
+import hmac
 import bcrypt
 import requests
 from dotenv import load_dotenv
@@ -113,6 +115,44 @@ def hash_password(pw: str) -> str:
 def verify_password(pw: str, hashed: str) -> bool:
     try: return bcrypt.checkpw(pw.encode(), hashed.encode())
     except Exception: return False
+
+
+# ---------- Short-lived signed URLs for private file access ----------
+# We do not use presigned URLs from the storage provider (none available).
+# Instead we mint a short-lived HMAC-signed token bound to (doc_id, user_id, exp).
+# Kept in-memory / stateless — no DB round-trip on verify.
+SIGNED_URL_TTL_SECONDS = 15 * 60           # 15 minutes
+SIGNED_URL_MAX_TTL_SECONDS = 60 * 60       # never accept > 60 min
+
+def _b64u(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+def _sign_download(doc_id: str, user_id: str, scope: str, exp_ts: int) -> str:
+    """Return an opaque signature binding this file to this actor and expiry.
+    scope: 'owner' | 'staff' | 'avatar' — separates capability domains so a
+    staff signature cannot be replayed as an owner signature or vice-versa.
+    """
+    msg = f"{doc_id}|{user_id}|{scope}|{exp_ts}".encode()
+    mac = hmac.new(JWT_SECRET.encode(), msg, hashlib.sha256).digest()
+    return _b64u(mac)
+
+def _verify_download(doc_id: str, user_id: str, scope: str, exp_ts: int, sig: str) -> bool:
+    if not (doc_id and user_id and scope and sig and exp_ts):
+        return False
+    if exp_ts < int(datetime.now(timezone.utc).timestamp()):
+        return False
+    expected = _sign_download(doc_id, user_id, scope, exp_ts)
+    return hmac.compare_digest(expected, sig)
+
+def _mint_signed_url(doc_id: str, user_id: str, scope: str, base_url: str) -> dict:
+    """Return {url, expires_at, ttl_seconds} for a private download link.
+    base_url should be the app's public origin (e.g. https://…preview.emergentagent.com).
+    """
+    exp = int((datetime.now(timezone.utc) + timedelta(seconds=SIGNED_URL_TTL_SECONDS)).timestamp())
+    sig = _sign_download(doc_id, user_id, scope, exp)
+    url = f"{base_url.rstrip('/')}/api/documents/download-signed/{doc_id}?uid={user_id}&scope={scope}&exp={exp}&sig={sig}"
+    return {"url": url, "expires_at": datetime.fromtimestamp(exp, tz=timezone.utc).isoformat(),
+            "ttl_seconds": SIGNED_URL_TTL_SECONDS}
 
 
 # ---------- Auth ----------
@@ -430,6 +470,67 @@ async def put_personal(body: PersonalProfileIn, user: dict = Depends(current_use
     return await db.personal_profile.find_one({"user_id": user["user_id"]}, {"_id": 0})
 
 
+# ---------- Avatars (profile pictures) ----------
+# Stored in the same private object bucket. Even avatars go through the signed-URL
+# flow — we never expose a permanent public storage URL. Signed URLs cache-safe up
+# to 5 minutes because avatar contents change rarely.
+_AVATAR_MIME = {"image/png", "image/jpeg", "image/webp", "image/gif"}
+
+@api_router.post("/profile/avatar")
+async def upload_avatar(file: UploadFile = File(...), user: dict = Depends(current_user)):
+    ctype = (file.content_type or "").lower()
+    if ctype not in _AVATAR_MIME:
+        raise HTTPException(400, "Avatar must be PNG, JPEG, WEBP, or GIF")
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Avatar too large (max 5MB)")
+    ext = ctype.split("/")[-1].replace("jpeg", "jpg")
+    # Deterministic path per user so re-uploads overwrite (storage has no delete API).
+    path = f"{APP_NAME}/avatars/{user['user_id']}.{ext}"
+    result = put_object(path, data, ctype)
+    await db.users.update_one(
+        {"user_id": user["user_id"]},
+        {"$set": {"avatar_storage_path": result["path"],
+                  "avatar_content_type": ctype,
+                  "avatar_updated_at": now_iso()}},
+    )
+    return {"ok": True, "content_type": ctype, "size": result.get("size", len(data))}
+
+
+@api_router.get("/profile/avatar-url")
+async def own_avatar_url(request: Request, user: dict = Depends(current_user)):
+    """Short-lived signed URL to the caller's own avatar. Safe for <img src>."""
+    u = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0, "avatar_storage_path": 1}) or {}
+    if not u.get("avatar_storage_path"):
+        raise HTTPException(404, "No avatar")
+    base = os.environ.get("PUBLIC_APP_URL") or str(request.base_url).rstrip("/")
+    # We reuse the download-signed route; for avatars doc_id is the target user_id.
+    return _mint_signed_url(user["user_id"], user["user_id"], "avatar", base)
+
+
+@api_router.get("/profile/avatar-url/{target_user_id}")
+async def other_avatar_url(target_user_id: str, request: Request,
+                            user: dict = Depends(current_user)):
+    """Signed URL for another user's avatar. Only shown to staff who have that
+    user in caseload, or for participants who share a program with the caller.
+    Prevents avatar enumeration across tenants.
+    """
+    target = await db.users.find_one({"user_id": target_user_id}, {"_id": 0, "avatar_storage_path": 1}) or {}
+    if not target.get("avatar_storage_path"):
+        raise HTTPException(404, "No avatar")
+    if target_user_id != user["user_id"]:
+        bindings = await _get_bindings(user["user_id"])
+        ctx = {"user_id": user["user_id"], "_bindings": bindings}
+        allowed = any(b["role"] == "super_admin" for b in bindings) \
+                  or await _staff_can_access_participant(ctx, target_user_id)
+        if not allowed:
+            raise HTTPException(403, "Out of scope")
+    base = os.environ.get("PUBLIC_APP_URL") or str(request.base_url).rstrip("/")
+    return _mint_signed_url(target_user_id, user["user_id"], "avatar", base)
+
+
 # ---------- Documents ----------
 @api_router.get("/documents")
 async def list_documents(section: Optional[str] = None, category: Optional[str] = None, user: dict = Depends(current_user)):
@@ -482,8 +583,66 @@ async def download_document(
     if not session: raise HTTPException(401, "Invalid session")
     doc = await db.documents.find_one({"id": doc_id, "user_id": session["user_id"], "is_deleted": False}, {"_id": 0})
     if not doc: raise HTTPException(404, "Not found")
+    if not doc.get("storage_path"):
+        raise HTTPException(410, "This document is no longer available")
     content, ctype = get_object(doc["storage_path"])
     return Response(content=content, media_type=doc.get("content_type") or ctype)
+
+
+@api_router.post("/documents/{doc_id}/signed-url")
+async def mint_owner_signed_url(doc_id: str, request: Request, user: dict = Depends(current_user)):
+    """Owner-only: mint a 15-minute signed URL for this document.
+    The URL is safe to use in <img src> / new tabs — it never sends the session cookie."""
+    doc = await db.documents.find_one({"id": doc_id, "user_id": user["user_id"], "is_deleted": False}, {"_id": 0})
+    if not doc or not doc.get("storage_path"):
+        raise HTTPException(404, "Not found")
+    base = os.environ.get("PUBLIC_APP_URL") or str(request.base_url).rstrip("/")
+    return _mint_signed_url(doc_id, user["user_id"], "owner", base)
+
+
+@api_router.get("/documents/download-signed/{doc_id}")
+async def download_signed(
+    doc_id: str,
+    uid: str = Query(...),
+    scope: str = Query(...),
+    exp: int = Query(...),
+    sig: str = Query(...),
+):
+    """Cookie-less download endpoint. Access is granted purely by the signed URL,
+    which was minted by an authenticated owner or scoped staff caller. Bounded to 15 min.
+    """
+    if scope not in ("owner", "staff", "avatar"):
+        raise HTTPException(400, "Invalid scope")
+    if exp > int(datetime.now(timezone.utc).timestamp()) + SIGNED_URL_MAX_TTL_SECONDS:
+        raise HTTPException(400, "Invalid expiry")
+    if not _verify_download(doc_id, uid, scope, exp, sig):
+        raise HTTPException(401, "Invalid or expired link")
+
+    if scope == "avatar":
+        u = await db.users.find_one({"user_id": doc_id}, {"_id": 0, "avatar_storage_path": 1, "avatar_content_type": 1}) or {}
+        path = u.get("avatar_storage_path")
+        if not path: raise HTTPException(404, "No avatar")
+        content, ctype = get_object(path)
+        return Response(content=content, media_type=u.get("avatar_content_type") or ctype,
+                        headers={"Cache-Control": "private, max-age=300"})
+
+    # Documents (owner or staff scope)
+    doc = await db.documents.find_one({"id": doc_id, "is_deleted": False}, {"_id": 0})
+    if not doc or not doc.get("storage_path"):
+        raise HTTPException(404, "Not found")
+    if scope == "owner":
+        if doc["user_id"] != uid:
+            raise HTTPException(403, "Forbidden")
+    else:  # staff — re-check caseload at fetch time so revoked bindings can't replay
+        staff = await db.users.find_one({"user_id": uid}, {"_id": 0})
+        if not staff: raise HTTPException(401, "Unknown signer")
+        bindings = await _get_bindings(uid)
+        staff_ctx = {"user_id": uid, "_bindings": bindings}
+        if not await _staff_can_access_participant(staff_ctx, doc["user_id"]):
+            raise HTTPException(403, "No longer in caseload")
+    content, ctype = get_object(doc["storage_path"])
+    return Response(content=content, media_type=doc.get("content_type") or ctype,
+                    headers={"Cache-Control": "private, no-store"})
 
 
 @api_router.delete("/documents/{doc_id}")
@@ -2516,6 +2675,25 @@ async def staff_participant_detail(enrollment_id: str,
     reqs = await db.requirements.find({"user_id": pid}, {"_id": 0}).sort("due_date", 1).to_list(500)
     # NOTE: journal, health, and support-circle are participant-private; staff does NOT get them here.
     return {"enrollment": en, "participant": u, "pathway": pw, "requirements": reqs}
+
+
+@api_router.post("/staff/documents/{doc_id}/signed-url")
+async def mint_staff_signed_url(doc_id: str, request: Request,
+                                 user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+    """Staff-only: mint a 15-minute signed URL for a participant's evidence document,
+    but ONLY if the participant is in the caller's caseload. Enforces cross-participant isolation.
+    """
+    doc = await db.documents.find_one({"id": doc_id, "is_deleted": False}, {"_id": 0})
+    if not doc or not doc.get("storage_path"):
+        raise HTTPException(404, "Not found")
+    if not await _staff_can_access_participant(user, doc["user_id"]):
+        raise HTTPException(403, "Out of scope")
+    base = os.environ.get("PUBLIC_APP_URL") or str(request.base_url).rstrip("/")
+    signed = _mint_signed_url(doc_id, user["user_id"], "staff", base)
+    await _audit(user["user_id"], user.get("_effective_role"), doc.get("organization_id"),
+                 "document.staff_view_url", "document", doc_id, None,
+                 {"expires_at": signed["expires_at"]})
+    return signed
 
 
 @api_router.get("/staff/requirements/{req_id}/evidence")

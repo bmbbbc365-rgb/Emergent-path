@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import api, { API, getToken } from "@/lib/api";
+import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, FileText, Trash2, Eye, EyeOff, Sparkles, Link2 } from "lucide-react";
 import { toast } from "sonner";
@@ -39,9 +39,13 @@ export default function DocumentDetail() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
-  const download = () => {
-    const url = `${API}/documents/${id}/download?auth=${getToken() || ""}`;
-    window.open(url, "_blank");
+  const download = async () => {
+    try {
+      const { data } = await api.post(`/documents/${id}/signed-url`);
+      window.open(data.url, "_blank");
+    } catch {
+      toast.error("Could not open this document right now.");
+    }
   };
 
   const reveal = async (key) => {
