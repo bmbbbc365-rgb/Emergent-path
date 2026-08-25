@@ -110,6 +110,8 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
     db = _db; api_router = _api_router; current_user = _current_user
     require_role = _require_role; now_iso = _now_iso; new_id = _new_id
     _audit = _audit_fn; BASE_APP_URL = base_url
+    # Register the additional P3d/e/f endpoints (staff notes + reminders + participant notes-mine).
+    register_notes_reminders()
 
     # -------- Intake --------
     @api_router.get("/onboarding/schema")
@@ -483,9 +485,280 @@ async def regenerate_action_map(uid: str) -> dict:
             "status": {"$in": ["not_started", "in_progress", "waiting", "needs_help"]},
         })
         if exists: continue
-        doc = {"id": new_id("act_"), **scoping, **p, "source": "rule",
+        why_personal = await _personalize_why(uid, p["title"], p["why"], p["domain"])
+        doc = {"id": new_id("act_"), **scoping, **p,
+               "why_personal": why_personal, "source": "rule",
                "status": "not_started", "declined": False,
                "history": [{"at": now, "event": "created"}],
                "created_at": now, "updated_at": now}
         await db.action_map_items.insert_one(doc)
+    # Regenerate reminders so due-date/expiration events are always fresh.
+    try:
+        await refresh_reminders(uid)
+    except Exception as e:
+        logger.warning(f"refresh_reminders failed: {e}")
     return {"created": len(proposals)}
+
+
+# ============================================================
+#  LLM personalization for Action Map "why"
+# ============================================================
+import os
+
+_ACTION_LLM_ON = os.environ.get("ACTION_MAP_LLM", "on").lower() == "on"
+
+
+async def _personalize_why(uid: str, title: str, base_why: str, domain: str) -> Optional[str]:
+    """Rephrase the deterministic 'why' in the participant's voice, using their
+    intake context. The RULE is still authoritative — we never invent new
+    facts, requirements, medical/legal advice, or timelines. If LLM fails,
+    we return None and callers fall back to base_why.
+    """
+    if not _ACTION_LLM_ON:
+        return None
+    key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        return None
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        answers = await db.intake_responses.find(
+            {"participant_user_id": uid}, {"_id": 0, "section": 1, "key": 1, "value": 1, "meta": 1}
+        ).to_list(200)
+        # Compact, non-sensitive context — no names, no SSN, no doc contents.
+        ctx = "; ".join(
+            f"{a['section']}.{a['key']}={a.get('value') or a.get('meta') or '—'}" for a in answers
+        )[:1500]
+        chat = LlmChat(
+            api_key=key,
+            session_id=f"apf_why_{uid}_{domain}",
+            system_message=(
+                "You are a re-entry stabilization coach. Rewrite the given base 'why' in the "
+                "participant's voice — warm, plain, second-person, ONE sentence, ≤22 words. "
+                "You must NOT invent new facts, timelines, legal/medical/supervision claims, "
+                "credentials, phone numbers, or resources. If the base already fits, tighten it. "
+                "Never mention that you rewrote it. Return only the sentence."
+            ),
+        ).with_model("openai", "gpt-5.6-terra")
+        msg = UserMessage(text=(
+            f"Domain: {domain}\nAction title: {title}\nBase why: {base_why}\n"
+            f"Participant intake (compact): {ctx}\n"
+            "Rewrite the base why in the participant's voice. Same meaning, more human."
+        ))
+        out = await chat.send_message(msg)
+        text = str(out).strip().strip('"').strip()
+        if len(text) < 6 or len(text) > 240:
+            return None
+        return text
+    except Exception as e:
+        logger.warning(f"LLM why personalization failed: {e}")
+        return None
+
+
+# ============================================================
+#  P3e — Staff Notes  (participant | shared | internal)
+# ============================================================
+_VISIBILITIES = {"participant", "shared", "internal"}
+
+
+async def _staff_can(user: dict, participant_user_id: str) -> bool:
+    """Local helper matching server.py's _staff_can_access_participant contract.
+    We re-check via db instead of importing to keep this module standalone.
+    """
+    bindings = user.get("_bindings")
+    if bindings is None:
+        bindings = await db.role_bindings.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(50)
+        user["_bindings"] = bindings
+    if any(b["role"] == "super_admin" for b in bindings):
+        return True
+    progs = {b["program_id"] for b in bindings
+             if b["role"] in ("program_admin", "program_staff") and b.get("program_id")}
+    if not progs:
+        return False
+    en = await db.enrollments.find_one(
+        {"participant_user_id": participant_user_id, "program_id": {"$in": list(progs)}},
+        {"_id": 0})
+    return en is not None
+
+
+# ============================================================
+#  P3f — Reminders  (in-app first; email/SMS later behind provider abstraction)
+# ============================================================
+async def refresh_reminders(uid: str) -> dict:
+    """Idempotent: for each document expiration and each Action Map due_date,
+    ensure ONE non-dismissed reminder exists at the right time.
+    """
+    from datetime import timedelta as _td, date as _date
+    from datetime import datetime as _dt
+    en = await db.enrollments.find_one({"participant_user_id": uid}, {"_id": 0}) or {}
+    scoping = {"organization_id": en.get("org_id"), "program_id": en.get("program_id"),
+               "enrollment_id": en.get("id"), "user_id": uid}
+    created = 0
+
+    # 1) Documents with expiration dates
+    docs = await db.documents.find(
+        {"user_id": uid, "is_deleted": False, "expires_on": {"$exists": True, "$ne": None}},
+        {"_id": 0, "id": 1, "label": 1, "document_type_label": 1, "expires_on": 1},
+    ).to_list(500)
+    for d in docs:
+        try:
+            exp = _dt.fromisoformat((d["expires_on"]).replace("Z", "+00:00")) if "T" in str(d["expires_on"]) else _dt.fromisoformat(str(d["expires_on"]))
+        except Exception:
+            continue
+        fire = exp - _td(days=30)
+        title = f"{d.get('document_type_label') or 'Document'} expires soon"
+        body = f"{d.get('label') or 'Document'} expires on {str(d['expires_on'])[:10]}."
+        exists = await db.reminders.find_one({
+            "user_id": uid, "related_type": "document", "related_id": d["id"],
+            "status": {"$in": ["scheduled", "sent"]},
+        })
+        if exists: continue
+        await db.reminders.insert_one({
+            "id": new_id("rem_"), **scoping,
+            "related_type": "document", "related_id": d["id"],
+            "title": title, "body": body,
+            "fire_at": fire.isoformat(), "channels": ["in_app"],
+            "status": "scheduled", "created_at": now_iso(),
+        }); created += 1
+
+    # 2) Action Map items with due_date
+    acts = await db.action_map_items.find(
+        {"participant_user_id": uid, "due_date": {"$exists": True, "$ne": None},
+         "status": {"$nin": ["completed"]}, "declined": {"$ne": True}},
+        {"_id": 0, "id": 1, "title": 1, "why": 1, "due_date": 1},
+    ).to_list(500)
+    for a in acts:
+        try:
+            due = _dt.fromisoformat(str(a["due_date"]))
+        except Exception:
+            continue
+        fire = due - _td(days=2)
+        exists = await db.reminders.find_one({
+            "user_id": uid, "related_type": "action", "related_id": a["id"],
+            "status": {"$in": ["scheduled", "sent"]},
+        })
+        if exists: continue
+        await db.reminders.insert_one({
+            "id": new_id("rem_"), **scoping,
+            "related_type": "action", "related_id": a["id"],
+            "title": f"Coming up: {a['title']}",
+            "body": a.get("why") or "",
+            "fire_at": fire.isoformat(), "channels": ["in_app"],
+            "status": "scheduled", "created_at": now_iso(),
+        }); created += 1
+
+    return {"created": created}
+
+
+# ============================================================
+#  Endpoint registration for P3d/e/f
+# ============================================================
+class NoteIn(BaseModel):
+    body: str
+    visibility: str  # participant | shared | internal
+
+
+class NoteUpdate(BaseModel):
+    body: Optional[str] = None
+    visibility: Optional[str] = None
+
+
+class ReminderPatch(BaseModel):
+    status: Optional[str] = None    # dismissed | snoozed | sent | scheduled
+    snooze_until: Optional[str] = None
+
+
+def register_notes_reminders():
+
+    @api_router.get("/staff/participants/{enrollment_id}/notes")
+    async def list_notes(enrollment_id: str, user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+        en = await db.enrollments.find_one({"id": enrollment_id}, {"_id": 0})
+        if not en: raise HTTPException(404, "Enrollment not found")
+        if not await _staff_can(user, en["participant_user_id"]):
+            raise HTTPException(403, "Out of scope")
+        notes = await db.staff_notes.find(
+            {"enrollment_id": enrollment_id}, {"_id": 0}
+        ).sort("created_at", -1).to_list(500)
+        return notes
+
+    @api_router.post("/staff/participants/{enrollment_id}/notes")
+    async def create_note(enrollment_id: str, body: NoteIn,
+                          user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+        if body.visibility not in _VISIBILITIES:
+            raise HTTPException(400, "Invalid visibility")
+        en = await db.enrollments.find_one({"id": enrollment_id}, {"_id": 0})
+        if not en: raise HTTPException(404, "Enrollment not found")
+        if not await _staff_can(user, en["participant_user_id"]):
+            raise HTTPException(403, "Out of scope")
+        note = {
+            "id": new_id("note_"), "enrollment_id": enrollment_id,
+            "participant_user_id": en["participant_user_id"],
+            "organization_id": en.get("org_id"), "program_id": en.get("program_id"),
+            "author_user_id": user["user_id"], "author_role": user.get("_effective_role"),
+            "body": body.body, "visibility": body.visibility,
+            "created_at": now_iso(), "updated_at": now_iso(),
+        }
+        await db.staff_notes.insert_one(note); note.pop("_id", None)
+        await _audit(user["user_id"], user.get("_effective_role"), en.get("org_id"),
+                     f"note.create.{body.visibility}", "staff_note", note["id"])
+        return note
+
+    @api_router.patch("/staff/notes/{note_id}")
+    async def update_note(note_id: str, body: NoteUpdate,
+                          user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+        note = await db.staff_notes.find_one({"id": note_id}, {"_id": 0})
+        if not note: raise HTTPException(404, "Not found")
+        if not await _staff_can(user, note["participant_user_id"]):
+            raise HTTPException(403, "Out of scope")
+        upd = {}
+        if body.body is not None: upd["body"] = body.body
+        if body.visibility is not None:
+            if body.visibility not in _VISIBILITIES: raise HTTPException(400, "Invalid visibility")
+            upd["visibility"] = body.visibility
+        upd["updated_at"] = now_iso()
+        await db.staff_notes.update_one({"id": note_id}, {"$set": upd})
+        return await db.staff_notes.find_one({"id": note_id}, {"_id": 0})
+
+    @api_router.delete("/staff/notes/{note_id}")
+    async def delete_note(note_id: str,
+                          user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+        note = await db.staff_notes.find_one({"id": note_id}, {"_id": 0})
+        if not note: raise HTTPException(404, "Not found")
+        if not await _staff_can(user, note["participant_user_id"]):
+            raise HTTPException(403, "Out of scope")
+        await db.staff_notes.delete_one({"id": note_id})
+        return {"ok": True}
+
+    @api_router.get("/notes/mine")
+    async def notes_mine(user: dict = Depends(current_user)):
+        """Participant view: returns only 'participant' + 'shared' notes, PLUS a
+        transparency indicator that internal notes exist (count only)."""
+        visible = await db.staff_notes.find(
+            {"participant_user_id": user["user_id"],
+             "visibility": {"$in": ["participant", "shared"]}},
+            {"_id": 0}).sort("created_at", -1).to_list(200)
+        internal_count = await db.staff_notes.count_documents(
+            {"participant_user_id": user["user_id"], "visibility": "internal"})
+        return {"notes": visible, "internal_notes_exist": internal_count > 0,
+                "internal_notes_count": internal_count}
+
+    # ---- Reminders ----
+    @api_router.post("/reminders/refresh")
+    async def reminders_refresh(user: dict = Depends(current_user)):
+        return await refresh_reminders(user["user_id"])
+
+    @api_router.get("/reminders")
+    async def list_reminders(user: dict = Depends(current_user)):
+        rs = await db.reminders.find(
+            {"user_id": user["user_id"], "status": {"$nin": ["dismissed"]}},
+            {"_id": 0}).sort("fire_at", 1).to_list(200)
+        return rs
+
+    @api_router.patch("/reminders/{rid}")
+    async def patch_reminder(rid: str, body: ReminderPatch,
+                              user: dict = Depends(current_user)):
+        upd = {k: v for k, v in body.model_dump(exclude_none=True).items()
+               if k in {"status", "snooze_until"}}
+        res = await db.reminders.update_one(
+            {"id": rid, "user_id": user["user_id"]}, {"$set": upd})
+        if res.matched_count == 0: raise HTTPException(404, "Not found")
+        return await db.reminders.find_one({"id": rid}, {"_id": 0})

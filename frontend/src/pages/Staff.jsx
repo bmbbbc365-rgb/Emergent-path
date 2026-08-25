@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Users, Search, ArrowRight, Shield, Check, CornerUpLeft, AlertCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
+import StaffNotes from "@/components/StaffNotes";
 
 const STATUS_STYLES = {
   not_started: "bg-slate-100 text-slate-700",
@@ -157,6 +158,8 @@ export function StaffParticipantDetail() {
           );
         })}
       </div>
+
+      <StaffNotes enrollmentId={enrollmentId} />
 
       <Dialog open={!!openReq} onOpenChange={(o) => { if (!o) { setOpenReq(null); setEvidence(null); }}}>
         <DialogContent className="max-w-lg" data-testid="staff-review-dialog">

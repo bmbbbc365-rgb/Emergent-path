@@ -25,6 +25,7 @@ import Onboarding from "@/pages/Onboarding";
 import LivingBlueprint from "@/pages/LivingBlueprint";
 import EmergencySettings from "@/pages/EmergencySettings";
 import PublicEmergency from "@/pages/PublicEmergency";
+import TransportationDeep from "@/pages/deep/TransportationDeep";
 
 const DEEP = {
   "requirements": Requirements,
@@ -60,6 +61,7 @@ function AppRouter() {
       <Route path="/app/onboarding" element={<Protected><Onboarding /></Protected>} />
       <Route path="/app/blueprint" element={<Protected><LivingBlueprint /></Protected>} />
       <Route path="/app/emergency" element={<Protected><EmergencySettings /></Protected>} />
+      <Route path="/app/transportation" element={<Protected><TransportationDeep /></Protected>} />
       <Route path="/staff/caseload" element={<Protected><StaffCaseload /></Protected>} />
       <Route path="/staff/participants/:enrollmentId" element={<Protected><StaffParticipantDetail /></Protected>} />
       <Route path="/app" element={<Protected><Dashboard /></Protected>} />

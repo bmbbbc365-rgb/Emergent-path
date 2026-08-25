@@ -7,6 +7,7 @@ import {
   CheckCircle2, Calendar, Target, FileText, Sparkles, ArrowRight, Shield,
   Stethoscope, HandCoins, House, Briefcase, GraduationCap, AlertCircle,
 } from "lucide-react";
+import ParticipantAlerts from "@/components/ParticipantAlerts";
 
 function TilePreview({ icon: Icon, label, to, children }) {
   return (
@@ -35,6 +36,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8" data-testid="dashboard">
+      <ParticipantAlerts />
       <div className="bmb-card p-6 md:p-8 relative overflow-hidden">
         <div className="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-[#C94F7C]/15 blur-3xl" />
         <div className="overline">A Path Forward™ · My Blueprint</div>
