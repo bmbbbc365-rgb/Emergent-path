@@ -749,6 +749,37 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
     require_role = _require_role; now_iso = _now_iso; new_id = _new_id
     _audit = _audit_fn; _staff_can_access_participant = _staff_can
 
+    # One-time hardening for hub_visits: race-safe unique compound index +
+    # de-dup of any pre-existing duplicate rows. Runs once at import time.
+    async def _harden_hub_visits():
+        try:
+            # De-dup existing (participant_user_id, key) groups, keeping the most
+            # recent last_visited_at document.
+            pipeline = [
+                {"$group": {
+                    "_id": {"u": "$participant_user_id", "k": "$key"},
+                    "docs": {"$push": {"_id": "$_id", "ts": "$last_visited_at"}},
+                    "n": {"$sum": 1},
+                }},
+                {"$match": {"n": {"$gt": 1}}},
+            ]
+            async for grp in db.hub_visits.aggregate(pipeline):
+                sorted_docs = sorted(grp["docs"], key=lambda d: d.get("ts") or "", reverse=True)
+                stale = [d["_id"] for d in sorted_docs[1:]]
+                if stale:
+                    await db.hub_visits.delete_many({"_id": {"$in": stale}})
+            await db.hub_visits.create_index(
+                [("participant_user_id", 1), ("key", 1)], unique=True, name="uniq_uid_key",
+            )
+        except Exception:
+            logger.exception("hub_visits hardening failed (non-fatal)")
+
+    import asyncio as _asyncio
+    try:
+        _asyncio.get_event_loop().create_task(_harden_hub_visits())
+    except Exception:
+        pass
+
     # -------- Full Path Forward Blueprint --------
     @api_router.get("/blueprint-intake/schema")
     async def bp_schema(user: dict = Depends(current_user)):

@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only testing of the new Digital Life Readiness section on A Path Forward. Logged in with heatherprejean7325@gmail.com, verified DigitalHub landing (exactly 12 tiles, correct labels, hero, Reminder card), tile navigation + Back, video placeholder cards (Create-an-Email = 2 with PlayCircle + Placeholder pill, all 9 other digital doorways render with >=1 video), TemplateGallery below LDTG tabs on digital-email-template (4 cards, Copy button shows 'Copied' + toast, clipboard actually received 237 chars), spreadsheet doorway (3 tab-separated templates), external Gmail action on the Do tab (opens new tab to accounts.google.com/mail.google.com), sidebar entry routing to /app/section/digital-readiness, mobile 390px layout (12 tiles, no horizontal overflow), and regression on 9 core routes. All requested acceptance criteria passed. One pre-existing minor React duplicate-key warning found on the dashboard traced to duplicate hub_visits documents.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/hub-visits + GET /api/hub-visits/recent", "issue": "db.hub_visits has no unique index on (participant_user_id, key); concurrent upserts create duplicate documents. Confirmed 2 duplicate groups in DB (keys 'digital-attach-send', 'digital-documents'). GET /hub-visits/recent then returns duplicate keys, which triggers a React 'two children with the same key' warning in DashboardV2 (line ~136 key={v.key}) and can duplicate/omit dashboard rows."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "DigitalHub landing", "issues": ["Tile icon tint (#2E5266 at 18% alpha) reads as near-grey on the cream background; low visual distinction vs. the teal accent claimed in the spec — cosmetic only"]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: create a unique compound index on hub_visits (participant_user_id, key) and de-dup existing rows, or de-dup client-side in DashboardV2 to clear the React duplicate-key console warning.",
+    "Optional cosmetic: increase digital tile icon background/foreground contrast so the teal accent is visible."
+  ],
+  "critical_code_review_comments": [
+    "/app/frontend/src/lib/doorways.js is 719 lines and grows per section — consider splitting into per-section modules (doorways/digital.js etc.) to stay under the 700-line guideline.",
+    "Doorway.jsx categoryOf() relies on substring matching of section strings ('digital' etc.); a new section containing an overlapping word would silently pick the wrong accent. Prefer an explicit section→accent map.",
+    "TemplateCard copy() falls back to a toast on clipboard failure but offers no manual-select affordance beyond the message; acceptable, but non-secure-context/older browsers will see only the error."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only request)", "frontend": "100%"},
+  "seed_data_creation": "hub_visits rows were created for the demo participant by navigating the digital doorways (expected app behavior).",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "heatherprejean7325@gmail.com / Blueprint2026! (worked, redirected to /app)",
+  "context_for_next_testing_agent": "All 12 digital tiles, 12 doorway routes, video placeholders, template copy (clipboard verified with grant_permissions(['clipboard-read','clipboard-write'])), external Do-tab links, sidebar entry, and 9 core regression routes pass as of iteration 4. Note: doActions (external links) live on the 'Do' tab of HubLDTG — you must click the Do tab before asserting them. The only open item is the hub_visits duplicate-key warning on DashboardV2.",
+  "rca_of_the_issue": "React duplicate-key warning on /app: POST /api/hub-visits uses update_one(..., upsert=True) on {participant_user_id, key} with no unique index. Rapid sequential navigations (as during automated testing) race and MongoDB inserts two documents for the same key. GET /hub-visits/recent returns both, and DashboardV2 maps them with key={v.key}. Fix: unique compound index + de-dup of existing docs."
+}

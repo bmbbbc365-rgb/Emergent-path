@@ -35,7 +35,16 @@ export default function DashboardV2() {
         api.get("/action-map").then(r => r.data).catch(() => []),
         api.get("/hub-visits/recent").then(r => r.data.visits).catch(() => []),
       ]);
-      setMe(m); setDash(d); setEreadiness(e); setActions(a); setVisits(v);
+      // Defensive client-side de-dup: even if the server returns duplicate
+      // rows for the same key (rare upsert race before the unique index
+      // rollout), we only render each key once — first-in wins because the
+      // server sorts by last_visited_at desc.
+      const seen = new Set();
+      const uniqV = (v || []).filter((x) => {
+        if (!x?.key || seen.has(x.key)) return false;
+        seen.add(x.key); return true;
+      });
+      setMe(m); setDash(d); setEreadiness(e); setActions(a); setVisits(uniqV);
     } catch {}
   })(); }, []);
 

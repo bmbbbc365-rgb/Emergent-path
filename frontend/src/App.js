@@ -32,6 +32,7 @@ import EmploymentReadiness from "@/pages/EmploymentReadiness";
 import Doorway from "@/pages/Doorway";
 import Journal from "@/pages/Journal";
 import QuizRunner from "@/pages/QuizRunner";
+import DigitalHub from "@/pages/DigitalHub";
 
 const DEEP = {
   "requirements": Requirements,
@@ -41,6 +42,7 @@ const DEEP = {
   "employment-record": EmploymentRecordDeep,
   "employment-readiness": EmploymentReadiness,
   "identity": IdentityDeep,
+  "digital-readiness": DigitalHub,
 };
 
 function DeepOrGeneric() {

@@ -141,11 +141,10 @@ Server-scored quizzes, real video watch-percentage tracking, and a private parti
 - Updated `pages/EmploymentReadiness.jsx` to route `workplace_expectations` directly to `/app/quiz/workplace_expectations`.
 - `lib/doorways.js` — `wellness-journal` doorway now routes Do actions to `/app/journal` (was `/app/section/wellness`).
 
-### Tests (`tests/test_learning_journal.py` — 8/8 pass, full regression 90/90 pass)
-- Quiz public endpoint does not leak correct answers.
-- Passing the quiz flips `workplace_expectations` to `completed`.
-- Failing the quiz does NOT flip the gate.
-- Video watch progress only moves forward; auto-completes at 90%.
-- Interview lesson completion (via course-title join) flips `interview_prep`.
-- Journal entries are isolated per participant (other users can't read or delete).
-- Empty-body and out-of-bounds mood rejected.
+## Digital Life Readiness section (Feb 2026)
+- **New participant hub** at `/app/section/digital-readiness` (`pages/DigitalHub.jsx`) — warm teal-terracotta gradient hero + a responsive 12-tile grid (1/2/3 columns on mobile/tablet/desktop). Every tile is a real doorway. Section footer includes a "practical readiness — not an official credential" reminder card.
+- **12 new doorway entries** in `lib/doorways.js` (`digital-*` slugs): Create an Email · Email Basics · Professional Email Template · Create a Spreadsheet · Internet Basics · Online Forms & Applications · Digital Documents · Upload & Download Files · Attach & Send Documents · School & Work Technology Basics · Password & Account Safety · Video Calls & Virtual Meetings. Each has plain-language Learn cards, real Do actions (some link out to Gmail / Outlook / Zoom / typing.com — opens in a new tab with `noopener,noreferrer`), Track links back into the app, and Bridge AI Get-help entries.
+- **Doorway shell extended** (`pages/Doorway.jsx`): renders a `<VideoPlaceholders />` block above Learn (~18 placeholder cards across the 12 doorways, each labeled "Video: ..." with a "Placeholder" pill) and a `<TemplateGallery />` block below Do with copy-to-clipboard cards (11 total templates across Email Template · Spreadsheet · Attach & Send · Online Forms).
+- **Category color**: `ACCENT.digital` = `#2E5266` (deep teal), sitting visually next to Employment so the digital area reads as work-adjacent.
+- **hub_visits race fix** (found during Digital section testing): `blueprint_v2.py` now creates a unique compound index on `(participant_user_id, key)` and runs a one-time de-dup at register time. `DashboardV2` also de-dups defensively client-side — eliminates the React duplicate-key console warning.
+- **Verified by testing_agent** (`iteration_4.json`): 100% frontend pass — all 12 tiles render, tile→doorway navigation works, video placeholders render on every digital doorway, template Copy button writes to clipboard (verified 237 chars), external Do-tab links open in a new tab, sidebar entry routes correctly, mobile 390px layout has no horizontal overflow, and 9 core routes remain unaffected.
