@@ -1888,6 +1888,45 @@ async def bridge_history(user: dict = Depends(current_user)):
     return await db.bridge_messages.find({"user_id": user["user_id"], "session_id": sid}, {"_id": 0}).sort("created_at", 1).to_list(500)
 
 
+@api_router.post("/bridge/transcribe")
+async def bridge_transcribe(audio: UploadFile = File(...), user: dict = Depends(current_user)):
+    """Fallback voice input path — accepts a browser MediaRecorder blob and returns text.
+    Used when the browser lacks Web Speech API (Firefox, some iOS versions).
+    Enforces caller auth and a 25MB soft-cap. Never records without an explicit request.
+    """
+    from emergentintegrations.llm.openai import OpenAISpeechToText
+
+    data = await audio.read()
+    if not data:
+        raise HTTPException(400, "Empty audio")
+    if len(data) > 25 * 1024 * 1024:
+        raise HTTPException(400, "Audio too large (max 25MB)")
+
+    # Whisper needs a filename with a recognized extension; MediaRecorder → webm/ogg
+    ct = (audio.content_type or "audio/webm").lower()
+    ext = "webm"
+    if "ogg" in ct: ext = "ogg"
+    elif "wav" in ct: ext = "wav"
+    elif "mp4" in ct or "m4a" in ct: ext = "m4a"
+    elif "mpeg" in ct or "mp3" in ct: ext = "mp3"
+
+    tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
+    try:
+        tmp.write(data); tmp.close()
+        stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
+        with open(tmp.name, "rb") as f:
+            resp = await stt.transcribe(file=f, model="whisper-1",
+                                        response_format="json", language="en")
+        text = getattr(resp, "text", None) or ""
+        return {"text": text.strip()}
+    except Exception as e:
+        logger.exception("Bridge transcribe failed")
+        raise HTTPException(500, f"Voice transcription failed")
+    finally:
+        try: os.unlink(tmp.name)
+        except Exception: pass
+
+
 @api_router.get("/bridge/suggestions")
 async def bridge_suggestions(user: dict = Depends(current_user)):
     """Return context-aware quick prompts based on real participant state."""
@@ -2855,6 +2894,14 @@ async def public_emergency(slug: str, request: Request):
 
 app.include_router(public_router)
 # ============= END PHASE 3 wiring =============
+
+
+# ============= BATCH A wiring — Full Blueprint · Assessments · EReadiness · Affirmations · Hub Visits =============
+import blueprint_v2 as _bpv2  # noqa: E402
+_bpv2.register(
+    db, api_router, current_user, require_role,
+    now_iso, new_id, _audit, _staff_can_access_participant,
+)
 
 
 app.include_router(api_router)

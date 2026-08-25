@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import AuthCallback from "@/pages/AuthCallback";
-import Dashboard from "@/pages/Dashboard";
+import Dashboard from "@/pages/DashboardV2";
 import BlueprintSection from "@/pages/BlueprintSection";
 import Library, { CourseDetail } from "@/pages/Library";
 import Privacy from "@/pages/Privacy";
@@ -26,6 +26,10 @@ import LivingBlueprint from "@/pages/LivingBlueprint";
 import EmergencySettings from "@/pages/EmergencySettings";
 import PublicEmergency from "@/pages/PublicEmergency";
 import TransportationDeep from "@/pages/deep/TransportationDeep";
+import FullBlueprintIntake from "@/pages/FullBlueprintIntake";
+import { AssessmentsHub, AssessmentRunner } from "@/pages/Assessments";
+import EmploymentReadiness from "@/pages/EmploymentReadiness";
+import Doorway from "@/pages/Doorway";
 
 const DEEP = {
   "requirements": Requirements,
@@ -33,6 +37,7 @@ const DEEP = {
   "benefits-hub": BenefitsHubDeep,
   "home-hub": HomeHubDeep,
   "employment-record": EmploymentRecordDeep,
+  "employment-readiness": EmploymentReadiness,
   "identity": IdentityDeep,
 };
 
@@ -60,6 +65,10 @@ function AppRouter() {
       <Route path="/e/:slug" element={<PublicEmergency />} />
       <Route path="/app/onboarding" element={<Protected><Onboarding /></Protected>} />
       <Route path="/app/blueprint" element={<Protected><LivingBlueprint /></Protected>} />
+      <Route path="/app/blueprint/intake" element={<Protected><FullBlueprintIntake /></Protected>} />
+      <Route path="/app/assessments" element={<Protected><AssessmentsHub /></Protected>} />
+      <Route path="/app/assessments/:id" element={<Protected><AssessmentRunner /></Protected>} />
+      <Route path="/app/doorway/:slug" element={<Protected><Doorway /></Protected>} />
       <Route path="/app/emergency" element={<Protected><EmergencySettings /></Protected>} />
       <Route path="/app/transportation" element={<Protected><TransportationDeep /></Protected>} />
       <Route path="/staff/caseload" element={<Protected><StaffCaseload /></Protected>} />

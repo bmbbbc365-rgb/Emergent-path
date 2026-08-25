@@ -83,9 +83,47 @@ Emergent-managed object storage is now the single home for every participant fil
 - `otheruser` → owner signed-URL for owner's doc = 404 (cross-participant isolation).
 - `otheruser` → `/api/profile/avatar-url/{owner_uid}` = 403.
 
+## Batch A — Full Blueprint · Assessments · Employment Readiness gating (Feb 2026)
+- New backend module `blueprint_v2.py` (wired from `server.py`) registers:
+  - **Full Path Forward Blueprint** — 30 questions, 13 categories (`/api/blueprint-intake/*`). Autosaves, resumable, carries forward Quick Check-In answers where keys match. Existing 28-Q Quick Check-In preserved unchanged.
+  - **4 assessments** — Work Style (10), Values (2), Interests (1 multi), Workforce Preferences (10). Deterministic rule-based scoring. `/api/assessments/*`.
+  - **Employment Readiness gating** — 10-item catalog with three kinds: `verifiable` (server-checked: assessment done, lesson viewed, quiz passed), `evidence` (document type in on-file docs), `attest` (participant-attested ordinary life task). `/api/ereadiness/*`. Staff-side visibility is pct+state only, no private evidence bodies.
+  - **Daily affirmation** — 30 reentry-aware, mature messages, deterministic by date. `/api/affirmations/today`.
+  - **Hub visits** — `/api/hub-visits/*` for the dashboard's "continue where you left off".
+- Tests: `tests/test_batch_a.py` — 14/14 pass. Full regression: 82/82 pass.
+
+## Batch B — Doorway architecture (Feb 2026)
+- `/app/frontend/src/lib/doorways.js` — content-driven map for 17 new doorways (recovery, wellness sub-pages, all Independent Living children, document guided flows, health insurance, life skills). Every doorway has real Learn/Do/Track/Get Help content — no coming-soon pages.
+- `/app/frontend/src/pages/Doorway.jsx` — single JSON-driven page mounted at `/app/doorway/:slug`. Uses shared `<HubLDTG />`. Category-colored gradient header. Automatic hub-visit tracking for the dashboard.
+
+## Batch C — Interior redesign · Bridge AI · Voice input (Feb 2026)
+- **Layout.jsx** — background is now a warm 3-layer gradient (cream + rose-gold + plum tints). Sidebar redone as plum→deep-navy gradient with a rose-gold radial. Header pill button "Ask Bridge AI" with plum→rose-gold gradient. Added **mobile bottom nav** (Home · Blueprint · Assess · Library · Bridge AI). Auto-opens Bridge AI when a route has `?bridge=…`.
+- **Dashboard v2** (`pages/DashboardV2.jsx`) — replaces the flat white dashboard:
+  - Personalized `Good morning, {first_name}` hero with plum→rose-gold gradient
+  - `<AffirmationCard />` — daily rotating warm cream card
+  - Today's Focus (from Action Map with LLM-personalized "why")
+  - Full Blueprint / Assessments quick-access panel
+  - Continue where you left off (Hub visits)
+  - Sections grid with per-category color families
+  - Small wins (last 3 completed action-map items)
+- **Bridge AI rename** — component header, header button, chat placeholder all updated. Assistant identity is now "Bridge AI" everywhere.
+- **Bridge AI voice input** — new `<VoiceInput />` component in `components/`. Web Speech API primary (Chrome/Edge/Safari/Android). Whisper fallback via new `POST /api/bridge/transcribe` (OpenAISpeechToText via emergentintegrations, `whisper-1`, 25MB cap). States: ready → listening → processing → ready/error/denied. Never records silently. Populates the same text field the participant can type into.
+
+### Route additions
+- `/app/blueprint/intake` — Full Blueprint 30-Q wizard
+- `/app/assessments` and `/app/assessments/:id` — hub + runner
+- `/app/section/employment-readiness` — real gated readiness page
+- `/app/doorway/:slug` — 17 doorways
+
+## Cross-user isolation (still verified)
+- Signed URL scope re-check on fetch (from previous batch).
+- Ereadiness endpoints scoped by `participant_user_id`; staff endpoint gated by `_staff_can_access_participant` + strips private evidence bodies.
+- Assessment responses/results scoped by `participant_user_id`.
+- Hub visits scoped by `participant_user_id`.
+
 ## What remains planned
-- P4 Learning engine (video watch %, assessments, cert PDF)
+- P4 Learning engine (video watch %, assessments, cert PDF) — the ereadiness engine now depends on `course_progress` / `quiz_results`; wiring the actual lesson-viewing UI to those collections lands next.
 - P5 Calendar OAuth + secure messaging + email reminders (Resend)
-- P6 Journal · Voice input · Resource/Template admin
+- P6 Journal · Voice input beyond Bridge (dictate journal entries)
 - P7 Bridge action proposals
 - P8 Program admin dashboards + reporting

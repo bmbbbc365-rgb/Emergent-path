@@ -6,6 +6,7 @@ import api from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import VoiceInput from "@/components/VoiceInput";
 
 const SAFETY = "Bridge helps you organize and navigate. It does not provide legal, medical, mental-health, or crisis advice, and does not guarantee benefits or outcomes. In a crisis, call or text 988. For emergencies, call 911.";
 
@@ -132,8 +133,8 @@ export default function BridgeChat({ open, onClose }) {
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-full bg-[#B76E79] flex items-center justify-center"><Bot className="w-5 h-5 text-white" /></div>
             <div>
-              <div className="font-display text-lg leading-none">Bridge</div>
-              <div className="text-[11px] text-white/60">Your guide across Build My Blueprint</div>
+              <div className="font-display text-lg leading-none">Bridge AI</div>
+              <div className="text-[11px] text-white/60">Your guide across A Path Forward</div>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -228,11 +229,17 @@ export default function BridgeChat({ open, onClose }) {
           <div className="flex items-end gap-2">
             <textarea rows={2} value={input} onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-              placeholder="Ask Bridge…"
+              placeholder="Ask Bridge AI…"
               className="flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#B76E79]/40"
               data-testid="bridge-input" />
+            <VoiceInput
+              disabled={streaming}
+              onTranscript={(text) => setInput((cur) => (cur ? cur + " " : "") + text)}
+              onInterim={() => { /* keep composed until final */ }}
+            />
             <Button onClick={() => send()} disabled={streaming || !input.trim()} className="rounded-full bg-[#B76E79] hover:bg-[#8E4E5A] text-white" data-testid="bridge-send-btn"><Send className="w-4 h-4" /></Button>
           </div>
+          <div className="text-[10px] text-slate-400 mt-1 px-1">Type or tap the mic. Voice is processed locally in your browser when supported.</div>
         </div>
       </div>
     </div>
