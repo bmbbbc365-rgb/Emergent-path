@@ -1,77 +1,81 @@
-# A Path Forward™ — Product Requirements & Working Notes
+# A Path Forward™ / Build My Blueprint™ — Product Requirements
 
 ## Product identity
-- **Program:** A Path Forward™
+- **Program:** A Path Forward™ (10:33 Re-Entry Pathway)
 - **Platform:** Build My Blueprint™
 - **Organization:** Beautifully Brokered 365
-- **Core message:** Education. Organization. Accountability. Opportunity. A Path Forward.
-- **Owner / demo participant:** `heatherprejean7325@gmail.com` / `Blueprint2026!`
+- **Message:** Education. Organization. Accountability. Opportunity.
+- **Owner / demo:** `heatherprejean7325@gmail.com` / `Blueprint2026!` (super_admin + participant)
 
 ## Core principles
 - Participant owns the data. Nothing shared unless explicitly permitted.
-- Not a corrections / legal / medical / clinical product. Education, organization, accountability, opportunity, resource navigation.
+- Not corrections / legal / medical / clinical software. Education, organization, accountability, opportunity, resource navigation.
 - AI assists — the participant confirms. AI never silently changes consequential records or auto-completes legally-significant requirements.
-- Sensitive identifiers (SSN / DL# / member IDs / policy #s / account #s) masked by default; explicit reveal only; never propagated across hubs or shown to Bridge.
+- **Evidence attachment ≠ verification.** Requirements marked `verification.required=true` cannot be self-verified.
+- Sensitive identifiers (SSN / DL# / member IDs / policy #s / account #s) masked by default; explicit reveal only; never propagated across hubs, never shown to staff, never in Bridge context.
+- **PathwayID is an identifier, not authentication.** Cannot open a session on its own.
+- Multi-tenant. Every participant record is scoped to `(organization_id, program_id, enrollment_id)`. Cross-tenant access returns 403/404.
 
-## What's implemented
-- Auth: JWT + Emergent Google Auth.
-- Dashboard, Requirements, Documents, Independent Living, Support Circle, Identity, Employment Readiness/Record, Digital Life, Health, Benefits, Home hubs.
-- Education content system (courses/modules/lessons; LDT-G rich blocks).
-- Bridge AI (OpenAI GPT-5.6 Terra default; personality picker for users; model picker admin-only).
-- **[Feb 2026] Smart Document & Intake Engine** (Gemini vision, provider-agnostic service, event log, dup detection, sensitive-field masking + explicit reveal, server-side isolation).
-- **[Feb 2026] Requirement Evidence UI, Bridge Document Search, Hub LDT-G** — this pass.
+## What ships today (Feb 2026)
 
-## New in this pass (Feb 2026)
+### Phase 1 — Multi-tenant foundation ✅
+- Collections: `organizations`, `programs`, `enrollments`, `pathway_ids`, `role_bindings`, `invitations`, `audit_events`.
+- Boot migration `ensure_platform_tenants()` seeds BBC org + A Path Forward program, binds owner as super_admin + participant, creates PathwayID `APF-2026-000001-G` (checksummed), and backfills existing docs/tasks/requirements/health/benefits/etc. with `organization_id/program_id/enrollment_id`. Idempotent.
+- `require_role(*roles)` FastAPI dependency; `_staff_can_access_participant()` scope check.
+- Endpoints:
+  - `GET /api/organizations` (scoped)
+  - `GET /api/programs` (scoped)
+  - `POST /api/invitations` / `GET /api/invitations` / `GET /api/invitations/verify/{code}` / `POST /api/invitations/accept`
+  - `GET /api/auth/me` now returns `memberships[]`, `enrollments[]`, `pathway`.
+- Frontend `/onboarding/{code}` page (invitation acceptance flow).
 
-### Requirement Evidence UI (`RequirementEvidence.jsx`)
-Every requirement card now shows an Evidence area:
-- "Add evidence" → dialog offers **Scan a new document** (reuses Smart Document Engine) or **Choose existing document** (picks from `/api/document-search`).
-- Attached documents show non-sensitive metadata + open in Document Detail.
-- Removing a link **unlinks only** — original document is preserved.
-- Attaching evidence NEVER changes requirement status.
+### Phase 2 — Requirement verification workflow ✅
+- `requirements.verification`: `{required, status, submitted_at, verified_at, verified_by, verifier_role, return_reason}`.
+- States: `not_started → in_progress → evidence_submitted → needs_review → verified` · or `→ returned → in_progress` · or `→ not_applicable`.
+- Auto-transition: attaching evidence with `verification.required=true` moves the state to `evidence_submitted`.
+- Participant PATCH `status=done` cannot flip `verification.status` to `verified`. Verification is exclusively `POST /api/staff/requirements/{id}/verify`.
+- Staff endpoints:
+  - `GET /api/staff/caseload`
+  - `GET /api/staff/participants/{enrollment_id}` — journal / health / support-circle are excluded server-side.
+  - `GET /api/staff/requirements/{id}/evidence` — doc metadata only, no `sensitive_fields`, no `storage_path`, no `content_hash`.
+  - `POST /api/staff/requirements/{id}/verify` — decision: verified | returned | needs_review | not_applicable.
+- Participant self actions: `POST /api/requirements/{id}/submit`, `POST /api/requirements/{id}/mark-in-progress`.
+- Audit: `invitation.create`, `invitation.accept`, `requirement.verified|returned|needs_review|not_applicable`, `requirement.submit`.
+- Frontend `/staff/caseload` and `/staff/participants/{id}` pages.
 
-### Bridge Document Search
-`build_bridge_context()` now injects a per-user **DOCUMENT INVENTORY** (id, label, type, category, sections, status, related requirement ids) + **REQUIREMENTS list**. Bridge system prompt instructs it to search that inventory, cite real doc ids using `[View: <label>](/app/documents/<doc_id>)`, offer `[Scan a document](/app/documents/scan)` when nothing matches, and never reveal masked sensitive identifiers.
-- All auth server-side: Bridge context is built with the participant's own `user_id`; cross-user data is impossible.
-- Verified: "Do I have a pay stub uploaded?" → Bridge returned `[View: August 21 Pay Stub](/app/documents/doc_...)` with the correct id.
+### Everything prior — preserved and working
+- Auth (JWT + Emergent Google) · Documents Center + object storage · **Smart Document & Intake Engine** (Gemini vision, provider-agnostic, sensitive masking, dup detection, event log) · **Requirement Evidence UI** · **Bridge Document Search** (participant-scoped inventory in context; refuses to invent doc ids) · Learning content model · Bridge personality picker + admin model picker · Health / Benefits / Home / Employment Record / Identity deep hubs · Support Circle · Hub LDT-G component on Requirements / Employment / Health / Benefits / Home · Landing page (Arkansas 10:33 aesthetic) · Sharing/permissions primitive.
 
-### Document Detail page (`/app/documents/:id`)
-Doorway target for Bridge and Evidence links. Shows metadata, extracted fields, sensitive fields (masked + per-field Show), connected sections/records, event history, "View original" download.
+## Acceptance results (Phase 1+2 pass)
+All 12 tests in `/app/backend/tests/phase12.sh` pass:
+1 `/auth/me` returns memberships + PathwayID · 2 orgs/programs scoping · 3 invitation → verify → accept · 4 caseload lists Heather with correct needs_review counter · 5 unaffiliated user 403s on /staff and /audit · 6 evidence attach auto-transitions to evidence_submitted · 7 staff view has no sensitive_fields/storage_path/content_hash · 8 participant PATCH cannot self-verify · 9 staff verify flips state + records verifier · 10 audit contains invitation + verify events · 11 APF staff 403s on foreign requirement · 12 invitation single-shot.
 
-### Hub LDT-G (`HubLDTG.jsx`)
-Reusable Learn → Do → Track → Get Help block. Every action is a real route (library, `/app/documents/scan`, dialog trigger, section navigation, `tel:` for helplines). Embedded in:
-- **Requirements** — Decision-Making / Rejection / Scams courses · Scan evidence · Balance / Paid / Records counters · 988 / SAMHSA / Bridge.
-- **Employment & Income** — Resume / Interview / Budgeting courses · Scan doc · Add job / pay / application dialogs · Active jobs / Applications / Pay logged / Resumes · Workforce resources / Bridge.
-- **Health Hub** — Stress / Rejection / Appointments courses · Scan doc · Add med / appt / wellness dialogs · counts · 988 / SAMHSA / Bridge.
-- **Benefits Hub** — How insurance works / HMO vs PPO / Medicaid · Scan doc · Add benefit · counts · resources / Bridge.
-- **Home Hub** — Budgeting / Digital / Scams courses · Scan lease · Add housing / utility · counts · resources / Bridge.
+## Data model additions
+- 🔵 `organizations {id, slug, name, brand, config, status}`
+- 🔵 `programs {id, org_id, slug, name, code, participant_alias, config, status}`
+- 🔵 `enrollments {id, org_id, program_id, participant_user_id, status, started_at, assigned_staff_ids[]}`
+- 🔵 `pathway_ids {id, pathway_id, org_id, program_id, enrollment_id, participant_user_id}`
+- 🔵 `role_bindings {id, user_id, role, org_id, program_id, enrollment_id, scope}`
+- 🔵 `invitations {id, pathway_code, org_id, program_id, invited_email, invited_role, expires_at, status, accepted_user_id}`
+- 🔵 `audit_events {id, actor_user_id, actor_role, org_id, action, target_type, target_id, before, after, created_at}` (append-only)
+- 🟡 `requirements` — added `verification` sub-object; also carries `organization_id/program_id/enrollment_id`
+- 🟡 All existing participant-scoped collections carry `organization_id/program_id/enrollment_id`
 
-### New endpoints
-- `POST /api/documents/{id}/link-requirement` (extended earlier; unchanged interface).
-- `DELETE /api/documents/{id}/link-requirement/{req_id}` — unlink; original preserved.
-- `GET /api/requirements/{req_id}/documents` — evidence list.
-- `GET /api/document-search?q=&document_type=&category=&section=&requirement_id=&limit=` — participant-scoped search used by UI and (via Bridge context) by Bridge.
+## What remains planned (labelled in nav — NOT built as placeholder pages)
+- Phase 3 Vault expansion (tags, expirations → auto reminders)
+- Phase 4 Learning engine (video_progress, assessments, gate rules, certificate PDF)
+- Phase 5 Calendar + Google Calendar OAuth + notifications + secure messaging
+- Phase 6 Journal · Voice input · Resource Directory admin · Templates admin
+- Phase 7 Bridge domain projections + action proposals
+- Phase 8 Program admin dashboards, reporting
 
-## Acceptance tests (all PASS this pass)
-1. Requirement evidence: link → 200; list=1; requirement.status stays `open`; unlink → 200; doc still 200; list=0 ✅
-2. Scan-evidence flow: "Add Evidence → Scan New Document" routes to existing Smart Document workflow (no duplicate uploader) ✅
-3. Bridge doc search: located real pay stub, returned `[View: <label>](/app/documents/<real_doc_id>)`, no hallucinated ids ✅
-4. Bridge privacy: cross-user requirement evidence 404; cross-user search returns own results only (0 for empty user) ✅
-5–8. Employment / Health / Benefits / Home LDT-G render with real doorways (verified via screenshots) ✅
-9. Cross-hub: pay stub scan → confirmed → Applied → income record visible in Employment (validated last pass, still works) ✅
+## Known limitations of this pass
+- Program Admin management UI is not yet built — admin actions go through `super_admin` seeded on boot. Invitation API supports program_admin role today; UI is coming next pass.
+- Google Calendar / messaging / journal not yet implemented.
+- Certificate generator (PDF) not yet implemented.
 
-## Data model
-Adds: `document_events` (existing), `document_analyses` (existing). Requirements now use `document_ids` (extended). No schema breaks.
-
-## Prioritized backlog (P0 → P2)
-- P1 Recovery Habits deep page (triggers / coping / urge log).
-- P1 Granular permissions for Future Partner Layer.
-- P1 Notifications + email reminders (Resend).
-- P2 Testimonial Wall + Welcome Video on landing.
-- P2 Course knowledge-check UI + certificates.
-- P2 Bridge "do action" tool — proactively schedule reminders / attach documents when user says yes.
-
-## Notes
-- Bridge context tops out at 60 docs + 60 reqs to stay within a reasonable token budget. Increase later if needed.
-- Route order matters: `/document-search` is a literal route (not under `/documents/`) to avoid clashing with `/documents/{doc_id}`.
-- `HubLDTG` is generic — pass `learn / doActions / track / help` arrays; use `onClick` to open existing dialogs, `route` to navigate, `phone` for helplines.
+## Files
+- Backend: `server.py` (Phase 1+2 additions ~350 LOC + boot migration + auth extension).
+- Backend tests: `backend/tests/phase12.sh` (12-step curl suite).
+- Frontend new: `pages/Staff.jsx` (Caseload + Participant Detail + Review dialog), `pages/AcceptInvitation.jsx`.
+- Frontend edited: `App.js` (new routes `/onboarding/:code`, `/staff/caseload`, `/staff/participants/:id`).

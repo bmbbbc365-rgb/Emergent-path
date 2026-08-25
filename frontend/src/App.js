@@ -19,6 +19,8 @@ import EmploymentRecordDeep from "@/pages/deep/EmploymentRecordDeep";
 import IdentityDeep from "@/pages/deep/IdentityDeep";
 import DocumentScan from "@/pages/DocumentScan";
 import DocumentDetail from "@/pages/DocumentDetail";
+import { StaffCaseload, StaffParticipantDetail } from "@/pages/Staff";
+import AcceptInvitation from "@/pages/AcceptInvitation";
 
 const DEEP = {
   "requirements": Requirements,
@@ -49,6 +51,9 @@ function AppRouter() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/onboarding/:code" element={<AcceptInvitation />} />
+      <Route path="/staff/caseload" element={<Protected><StaffCaseload /></Protected>} />
+      <Route path="/staff/participants/:enrollmentId" element={<Protected><StaffParticipantDetail /></Protected>} />
       <Route path="/app" element={<Protected><Dashboard /></Protected>} />
       <Route path="/app/documents/scan" element={<Protected><DocumentScan /></Protected>} />
       <Route path="/app/documents/:id" element={<Protected><DocumentDetail /></Protected>} />

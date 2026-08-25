@@ -222,7 +222,14 @@ async def google_session(body: GoogleSessionIn, response: Response):
 
 @api_router.get("/auth/me")
 async def me(user: dict = Depends(current_user)):
-    return user
+    # Include memberships (role bindings) + primary enrollment + pathway_id.
+    bindings = await db.role_bindings.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(100)
+    enrollments = await db.enrollments.find({"participant_user_id": user["user_id"]}, {"_id": 0}).to_list(20)
+    pathway = None
+    if enrollments:
+        pw = await db.pathway_ids.find_one({"enrollment_id": enrollments[0]["id"]}, {"_id": 0})
+        pathway = pw
+    return {**user, "memberships": bindings, "enrollments": enrollments, "pathway": pathway}
 
 
 @api_router.post("/auth/logout")
@@ -933,6 +940,16 @@ async def link_requirement(doc_id: str, body: LinkRequirementIn, user: dict = De
         {"id": body.requirement_id, "user_id": user["user_id"]},
         {"$addToSet": {"document_ids": doc_id}},
     )
+    # Phase 2: attaching evidence transitions verification.status → evidence_submitted
+    # ONLY IF verification is required and current state is earlier. Never marks verified.
+    fresh_req = await db.requirements.find_one({"id": body.requirement_id, "user_id": user["user_id"]}, {"_id": 0})
+    ver = (fresh_req or {}).get("verification") or {}
+    if ver.get("required") and ver.get("status") in {None, "not_started", "in_progress", "returned"}:
+        new_ver = {**ver, "status": "evidence_submitted", "submitted_at": now_iso()}
+        await db.requirements.update_one(
+            {"id": body.requirement_id, "user_id": user["user_id"]},
+            {"$set": {"verification": new_ver, "status": "in_progress"}},
+        )
     await db.documents.update_one(
         {"id": doc_id, "user_id": user["user_id"]},
         {"$addToSet": {"related_record_ids": {"type": "requirement", "id": body.requirement_id, "section": "requirements"}},
@@ -2117,12 +2134,493 @@ async def ensure_owner():
                                   {"$set": {"password_hash": hash_password(OWNER_PASSWORD), "is_owner": True}})
 
 
+# ============================================================
+# ============  PHASE 1: MULTI-TENANT + RBAC + AUDIT  =========
+# ============================================================
+# Collections introduced: organizations, programs, enrollments, pathway_ids,
+# role_bindings, invitations, audit_events. Existing collections are backfilled
+# with organization_id / program_id / enrollment_id where applicable.
+
+ROLES = {"super_admin", "program_admin", "program_staff", "participant"}
+BBC_ORG_SLUG = "beautifully-brokered-365"
+APF_PROGRAM_SLUG = "a-path-forward"
+
+
+def _pathway_checksum(base: str) -> str:
+    total = sum(ord(c) for c in base if c.isalnum())
+    return "ABCDEFGHJKLMNPRTVWXY"[total % 20]
+
+
+async def _next_pathway_id(org: dict, program: dict) -> str:
+    prefix = program.get("code") or "APF"
+    year = datetime.now(timezone.utc).year
+    count = await db.pathway_ids.count_documents({"program_id": program["id"]}) + 1
+    base = f"{prefix}-{year}-{count:06d}"
+    return f"{base}-{_pathway_checksum(base)}"
+
+
+async def _audit(actor_user_id: Optional[str], actor_role: Optional[str], org_id: Optional[str],
+                 action: str, target_type: str, target_id: Optional[str] = None,
+                 before: Optional[dict] = None, after: Optional[dict] = None):
+    await db.audit_events.insert_one({
+        "id": new_id("aud_"), "actor_user_id": actor_user_id, "actor_role": actor_role,
+        "org_id": org_id, "action": action, "target_type": target_type, "target_id": target_id,
+        "before": before, "after": after, "created_at": now_iso(),
+    })
+
+
+async def ensure_platform_tenants():
+    """Seed BBC org + A Path Forward program, bind owner as super_admin + participant,
+    generate PathwayID, and backfill existing participant records with org/program/enrollment.
+    Idempotent — safe to run on every boot.
+    """
+    org = await db.organizations.find_one({"slug": BBC_ORG_SLUG}, {"_id": 0})
+    if not org:
+        org = {
+            "id": new_id("org_"), "slug": BBC_ORG_SLUG, "name": "Beautifully Brokered 365",
+            "brand": {"primary_color": "#1B1033", "logo_url": None, "participant_alias": None},
+            "config": {}, "status": "active", "created_at": now_iso(),
+        }
+        await db.organizations.insert_one(org)
+    program = await db.programs.find_one({"org_id": org["id"], "slug": APF_PROGRAM_SLUG}, {"_id": 0})
+    if not program:
+        program = {
+            "id": new_id("prg_"), "org_id": org["id"], "slug": APF_PROGRAM_SLUG,
+            "name": "A Path Forward — 10:33 Re-entry Pathway", "code": "APF",
+            "participant_alias": "A Path Forward",
+            "config": {"verification_required_types": ["release_document", "court_document",
+                                                        "supervision_document", "requirement_document"]},
+            "status": "active", "created_at": now_iso(),
+        }
+        await db.programs.insert_one(program)
+
+    owner = await db.users.find_one({"email": OWNER_EMAIL}, {"_id": 0})
+    if not owner:
+        return
+    uid = owner["user_id"]
+
+    # Owner is a super_admin at BBC scope
+    if not await db.role_bindings.find_one({"user_id": uid, "role": "super_admin"}):
+        await db.role_bindings.insert_one({
+            "id": new_id("rb_"), "user_id": uid, "role": "super_admin",
+            "org_id": org["id"], "program_id": None, "scope": "platform",
+            "created_at": now_iso(), "created_by": "system",
+        })
+
+    # Owner is ALSO a participant of the demo program
+    enrollment = await db.enrollments.find_one({"program_id": program["id"], "participant_user_id": uid}, {"_id": 0})
+    if not enrollment:
+        enrollment = {
+            "id": new_id("en_"), "org_id": org["id"], "program_id": program["id"],
+            "participant_user_id": uid, "status": "active",
+            "started_at": now_iso(), "ended_at": None, "assigned_staff_ids": [],
+        }
+        await db.enrollments.insert_one(enrollment)
+    # PathwayID
+    if not await db.pathway_ids.find_one({"enrollment_id": enrollment["id"]}):
+        pid = await _next_pathway_id(org, program)
+        await db.pathway_ids.insert_one({
+            "id": new_id("pw_"), "pathway_id": pid, "org_id": org["id"],
+            "program_id": program["id"], "enrollment_id": enrollment["id"],
+            "participant_user_id": uid, "created_at": now_iso(),
+        })
+    if not await db.role_bindings.find_one({"user_id": uid, "role": "participant", "program_id": program["id"]}):
+        await db.role_bindings.insert_one({
+            "id": new_id("rb_"), "user_id": uid, "role": "participant",
+            "org_id": org["id"], "program_id": program["id"], "scope": "self",
+            "enrollment_id": enrollment["id"], "created_at": now_iso(), "created_by": "system",
+        })
+
+    # Backfill: stamp existing participant records with org/program/enrollment.
+    scoping = {"organization_id": org["id"], "program_id": program["id"], "enrollment_id": enrollment["id"]}
+    for coll in ("tasks", "notes", "goals", "documents", "requirements", "medications",
+                 "conditions", "appointments", "wellness_logs", "benefits", "housing_records",
+                 "utilities", "jobs", "income", "job_applications", "resumes",
+                 "lesson_progress", "habits", "habit_logs", "bridge_messages",
+                 "document_analyses", "document_events"):
+        await db[coll].update_many(
+            {"user_id": uid, "organization_id": {"$exists": False}},
+            {"$set": scoping},
+        )
+    await db.emergency_profile.update_many({"user_id": uid, "organization_id": {"$exists": False}}, {"$set": scoping})
+    await db.personal_profile.update_many({"user_id": uid, "organization_id": {"$exists": False}}, {"$set": scoping})
+
+    # Extend existing requirements with verification defaults if missing.
+    prog_types = set((program.get("config") or {}).get("verification_required_types") or [])
+    reqs = db.requirements.find({"user_id": uid, "verification": {"$exists": False}})
+    async for r in reqs:
+        req_required = (r.get("type") in {"court_date", "restitution", "fees", "class",
+                                          "community_service", "drug_test", "check_in"})
+        # Map current status → new state.
+        cur = r.get("status") or "open"
+        mapped = {
+            "open": "not_started", "in_progress": "in_progress",
+            "done": "verified" if req_required else "in_progress",
+            "waived": "not_applicable",
+        }.get(cur, "not_started")
+        # If evidence already attached, promote to evidence_submitted.
+        if r.get("document_ids") and mapped in ("not_started", "in_progress"):
+            mapped = "evidence_submitted"
+        await db.requirements.update_one({"id": r["id"]}, {"$set": {
+            "verification": {"required": req_required, "status": mapped,
+                             "submitted_at": None, "verified_at": None,
+                             "verified_by": None, "verifier_role": None, "return_reason": None},
+        }})
+
+
+# ---------- Auth / RBAC helpers ----------
+async def _get_bindings(user_id: str) -> list[dict]:
+    return await db.role_bindings.find({"user_id": user_id}, {"_id": 0}).to_list(100)
+
+
+def _has_role(bindings: list[dict], roles: set[str]) -> bool:
+    return any(b["role"] in roles for b in bindings)
+
+
+def _org_program_scope(bindings: list[dict], roles: set[str]) -> tuple[set[str], set[str]]:
+    """Return (org_ids, program_ids) accessible for the requested roles."""
+    orgs, progs = set(), set()
+    for b in bindings:
+        if b["role"] in roles:
+            if b.get("org_id"): orgs.add(b["org_id"])
+            if b.get("program_id"): progs.add(b["program_id"])
+    return orgs, progs
+
+
+def require_role(*roles: str):
+    async def _dep(user: dict = Depends(current_user)) -> dict:
+        bindings = await _get_bindings(user["user_id"])
+        rset = set(roles)
+        # super_admin implicitly satisfies any staff-level role check
+        if any(b["role"] == "super_admin" for b in bindings):
+            user["_bindings"] = bindings
+            user["_effective_role"] = "super_admin"
+            return user
+        if not _has_role(bindings, rset):
+            raise HTTPException(403, f"Requires role: {' or '.join(roles)}")
+        # Pick the strongest role from the match
+        priority = ["super_admin", "program_admin", "program_staff", "participant"]
+        eff = next((r for r in priority if any(b["role"] == r for b in bindings)), None)
+        user["_bindings"] = bindings
+        user["_effective_role"] = eff
+        return user
+    return _dep
+
+
+async def _staff_can_access_participant(user: dict, participant_user_id: str) -> bool:
+    """True if the caller is a super_admin, or program_admin/staff in the same program as an enrollment."""
+    bindings = user.get("_bindings") or await _get_bindings(user["user_id"])
+    if any(b["role"] == "super_admin" for b in bindings):
+        return True
+    staff_programs = {b["program_id"] for b in bindings
+                       if b["role"] in ("program_admin", "program_staff") and b.get("program_id")}
+    if not staff_programs:
+        return False
+    en = await db.enrollments.find_one({"participant_user_id": participant_user_id,
+                                        "program_id": {"$in": list(staff_programs)}}, {"_id": 0})
+    return en is not None
+
+
+# ---------- Organizations / Programs (read-scoped) ----------
+@api_router.get("/organizations")
+async def list_organizations(user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+    if user.get("_effective_role") == "super_admin":
+        return await db.organizations.find({}, {"_id": 0}).to_list(100)
+    org_ids, _ = _org_program_scope(user["_bindings"], {"program_admin", "program_staff"})
+    return await db.organizations.find({"id": {"$in": list(org_ids)}}, {"_id": 0}).to_list(100)
+
+
+@api_router.get("/programs")
+async def list_programs(user: dict = Depends(require_role("super_admin", "program_admin", "program_staff", "participant"))):
+    bindings = user["_bindings"]
+    if any(b["role"] == "super_admin" for b in bindings):
+        return await db.programs.find({}, {"_id": 0}).to_list(200)
+    prog_ids = {b["program_id"] for b in bindings if b.get("program_id")}
+    # also include programs the user is enrolled in
+    en = await db.enrollments.find({"participant_user_id": user["user_id"]}, {"_id": 0}).to_list(50)
+    for e in en:
+        prog_ids.add(e["program_id"])
+    return await db.programs.find({"id": {"$in": list(prog_ids)}}, {"_id": 0}).to_list(200)
+
+
+# ---------- Invitations ----------
+class InvitationIn(BaseModel):
+    email: EmailStr
+    role: str                     # program_admin | program_staff | participant
+    program_id: str
+    name: Optional[str] = None
+
+
+@api_router.post("/invitations")
+async def create_invitation(body: InvitationIn, user: dict = Depends(require_role("super_admin", "program_admin"))):
+    if body.role not in {"program_admin", "program_staff", "participant"}:
+        raise HTTPException(400, "Invalid role")
+    program = await db.programs.find_one({"id": body.program_id}, {"_id": 0})
+    if not program:
+        raise HTTPException(404, "Program not found")
+    # Non-super_admin must be admin of THAT program.
+    if user["_effective_role"] != "super_admin":
+        allowed = any(b.get("program_id") == body.program_id and b["role"] == "program_admin" for b in user["_bindings"])
+        if not allowed:
+            raise HTTPException(403, "Not an admin of that program")
+    code = f"{program.get('code','APF')}-{uuid.uuid4().hex[:8].upper()}"
+    doc = {
+        "id": new_id("inv_"), "org_id": program["org_id"], "program_id": body.program_id,
+        "invited_email": body.email.lower(), "invited_name": body.name,
+        "invited_role": body.role, "pathway_code": code,
+        "created_by": user["user_id"], "created_at": now_iso(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=14)).isoformat(),
+        "status": "pending", "accepted_user_id": None,
+    }
+    await db.invitations.insert_one(doc)
+    await _audit(user["user_id"], user["_effective_role"], program["org_id"],
+                 "invitation.create", "invitation", doc["id"], None, {"email": body.email, "role": body.role})
+    return {"invitation": {k: v for k, v in doc.items() if k != "_id"},
+            "share_url": f"/onboarding/{code}"}
+
+
+@api_router.get("/invitations")
+async def list_invitations(program_id: Optional[str] = None,
+                            user: dict = Depends(require_role("super_admin", "program_admin"))):
+    q = {}
+    if program_id: q["program_id"] = program_id
+    else:
+        _, prog_ids = _org_program_scope(user["_bindings"], {"program_admin"})
+        if user["_effective_role"] != "super_admin":
+            q["program_id"] = {"$in": list(prog_ids)}
+    return await db.invitations.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+@api_router.get("/invitations/verify/{code}")
+async def verify_invitation(code: str):
+    """Public: check code and return non-sensitive display info for the onboarding screen."""
+    inv = await db.invitations.find_one({"pathway_code": code, "status": "pending"}, {"_id": 0})
+    if not inv:
+        raise HTTPException(404, "Invitation not found or already used")
+    if inv["expires_at"] < now_iso():
+        raise HTTPException(410, "Invitation expired")
+    program = await db.programs.find_one({"id": inv["program_id"]}, {"_id": 0}) or {}
+    org = await db.organizations.find_one({"id": inv["org_id"]}, {"_id": 0}) or {}
+    return {"code": code, "invited_email": inv["invited_email"], "invited_role": inv["invited_role"],
+            "program_name": program.get("name"), "org_name": org.get("name")}
+
+
+class AcceptInvitationIn(BaseModel):
+    code: str
+    password: Optional[str] = None
+    name: Optional[str] = None
+
+
+@api_router.post("/invitations/accept")
+async def accept_invitation(body: AcceptInvitationIn, response: Response):
+    """One-shot invitation redemption. Creates or attaches a user + role binding + (if participant) enrollment + PathwayID."""
+    inv = await db.invitations.find_one({"pathway_code": body.code, "status": "pending"}, {"_id": 0})
+    if not inv: raise HTTPException(404, "Invalid or already-used invitation")
+    if inv["expires_at"] < now_iso(): raise HTTPException(410, "Invitation expired")
+    email = inv["invited_email"]
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        if not body.password:
+            raise HTTPException(400, "Password required for new account")
+        uid = new_id("user_")
+        await db.users.insert_one({
+            "user_id": uid, "email": email, "name": body.name or email.split("@")[0],
+            "password_hash": hash_password(body.password), "auth_type": "password",
+            "picture": None, "created_at": now_iso(),
+        })
+    else:
+        uid = user["user_id"]
+    program = await db.programs.find_one({"id": inv["program_id"]}, {"_id": 0})
+    if not program: raise HTTPException(404, "Program missing")
+
+    # Role binding (idempotent)
+    binding = await db.role_bindings.find_one(
+        {"user_id": uid, "role": inv["invited_role"], "program_id": inv["program_id"]})
+    if not binding:
+        await db.role_bindings.insert_one({
+            "id": new_id("rb_"), "user_id": uid, "role": inv["invited_role"],
+            "org_id": inv["org_id"], "program_id": inv["program_id"],
+            "scope": "self" if inv["invited_role"] == "participant" else "program",
+            "created_at": now_iso(), "created_by": inv["created_by"],
+        })
+
+    # For participants, create enrollment + PathwayID (idempotent)
+    if inv["invited_role"] == "participant":
+        en = await db.enrollments.find_one({"program_id": inv["program_id"], "participant_user_id": uid}, {"_id": 0})
+        if not en:
+            en = {"id": new_id("en_"), "org_id": inv["org_id"], "program_id": inv["program_id"],
+                  "participant_user_id": uid, "status": "active",
+                  "started_at": now_iso(), "assigned_staff_ids": []}
+            await db.enrollments.insert_one(en)
+        if not await db.pathway_ids.find_one({"enrollment_id": en["id"]}):
+            pid = await _next_pathway_id({"id": inv["org_id"]}, program)
+            await db.pathway_ids.insert_one({
+                "id": new_id("pw_"), "pathway_id": pid, "org_id": inv["org_id"],
+                "program_id": inv["program_id"], "enrollment_id": en["id"],
+                "participant_user_id": uid, "created_at": now_iso(),
+            })
+        if await db.tasks.count_documents({"user_id": uid}) == 0:
+            await seed_participant(uid, minimal=True, name=body.name or "Participant")
+        # Backfill new participant docs with scoping
+        scoping = {"organization_id": inv["org_id"], "program_id": inv["program_id"], "enrollment_id": en["id"]}
+        for coll in ("tasks", "notes", "goals", "documents", "requirements"):
+            await db[coll].update_many({"user_id": uid, "organization_id": {"$exists": False}}, {"$set": scoping})
+
+    await db.invitations.update_one({"id": inv["id"]},
+                                    {"$set": {"status": "accepted", "accepted_user_id": uid,
+                                              "accepted_at": now_iso()}})
+    await _audit(uid, inv["invited_role"], inv["org_id"], "invitation.accept", "invitation", inv["id"])
+
+    token = await _create_session(uid)
+    _set_cookie(response, token)
+    return {"session_token": token, "user_id": uid, "role": inv["invited_role"], "program_id": inv["program_id"]}
+
+
+# ---------- Staff caseload + participant detail ----------
+@api_router.get("/staff/caseload")
+async def staff_caseload(user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+    if user["_effective_role"] == "super_admin":
+        enrollments = await db.enrollments.find({}, {"_id": 0}).to_list(1000)
+    else:
+        prog_ids = {b["program_id"] for b in user["_bindings"]
+                    if b["role"] in ("program_admin", "program_staff") and b.get("program_id")}
+        enrollments = await db.enrollments.find({"program_id": {"$in": list(prog_ids)}}, {"_id": 0}).to_list(1000)
+    # attach participant name + pathway_id + basic counters
+    out = []
+    for en in enrollments:
+        u = await db.users.find_one({"user_id": en["participant_user_id"]},
+                                    {"_id": 0, "name": 1, "email": 1, "picture": 1}) or {}
+        pw = await db.pathway_ids.find_one({"enrollment_id": en["id"]}, {"_id": 0, "pathway_id": 1}) or {}
+        needs_review = await db.requirements.count_documents(
+            {"user_id": en["participant_user_id"], "verification.status": {"$in": ["evidence_submitted", "needs_review"]}}
+        )
+        total_reqs = await db.requirements.count_documents({"user_id": en["participant_user_id"]})
+        out.append({
+            "enrollment": en, "participant": u,
+            "pathway_id": pw.get("pathway_id"),
+            "needs_review": needs_review, "requirements_total": total_reqs,
+        })
+    return out
+
+
+@api_router.get("/staff/participants/{enrollment_id}")
+async def staff_participant_detail(enrollment_id: str,
+                                    user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+    en = await db.enrollments.find_one({"id": enrollment_id}, {"_id": 0})
+    if not en: raise HTTPException(404, "Enrollment not found")
+    if not await _staff_can_access_participant(user, en["participant_user_id"]):
+        raise HTTPException(403, "Out of scope")
+    pid = en["participant_user_id"]
+    u = await db.users.find_one({"user_id": pid}, {"_id": 0, "password_hash": 0}) or {}
+    pw = await db.pathway_ids.find_one({"enrollment_id": enrollment_id}, {"_id": 0}) or {}
+    reqs = await db.requirements.find({"user_id": pid}, {"_id": 0}).sort("due_date", 1).to_list(500)
+    # NOTE: journal, health, and support-circle are participant-private; staff does NOT get them here.
+    return {"enrollment": en, "participant": u, "pathway": pw, "requirements": reqs}
+
+
+@api_router.get("/staff/requirements/{req_id}/evidence")
+async def staff_requirement_evidence(req_id: str,
+                                      user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+    req = await db.requirements.find_one({"id": req_id}, {"_id": 0})
+    if not req: raise HTTPException(404, "Not found")
+    if not await _staff_can_access_participant(user, req["user_id"]):
+        raise HTTPException(403, "Out of scope")
+    doc_ids = req.get("document_ids") or []
+    # Return metadata only. Sensitive extracted values are NEVER included.
+    docs = await db.documents.find(
+        {"user_id": req["user_id"], "is_deleted": False, "id": {"$in": doc_ids}},
+        {"_id": 0, "content_hash": 0, "storage_path": 0},
+    ).to_list(200)
+    return {"requirement": req, "documents": docs}
+
+
+class VerifyIn(BaseModel):
+    decision: str            # verified | returned | needs_review | not_applicable
+    reason: Optional[str] = None
+
+
+@api_router.post("/staff/requirements/{req_id}/verify")
+async def staff_verify_requirement(req_id: str, body: VerifyIn,
+                                    user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
+    if body.decision not in {"verified", "returned", "needs_review", "not_applicable"}:
+        raise HTTPException(400, "Invalid decision")
+    req = await db.requirements.find_one({"id": req_id}, {"_id": 0})
+    if not req: raise HTTPException(404, "Not found")
+    if not await _staff_can_access_participant(user, req["user_id"]):
+        raise HTTPException(403, "Out of scope")
+    before = req.get("verification") or {}
+    ver = {**before, "status": body.decision, "verified_by": user["user_id"],
+           "verifier_role": user["_effective_role"], "verified_at": now_iso(),
+           "return_reason": body.reason if body.decision == "returned" else before.get("return_reason")}
+    upd = {"verification": ver}
+    if body.decision == "verified":
+        upd["status"] = "done"
+    elif body.decision == "returned":
+        upd["status"] = "in_progress"
+    elif body.decision == "not_applicable":
+        upd["status"] = "waived"
+    await db.requirements.update_one({"id": req_id}, {"$set": upd})
+    await _audit(user["user_id"], user["_effective_role"], req.get("organization_id"),
+                 f"requirement.{body.decision}", "requirement", req_id, before, ver)
+    return await db.requirements.find_one({"id": req_id}, {"_id": 0})
+
+
+# ---------- Participant self actions on requirements ----------
+@api_router.post("/requirements/{req_id}/submit")
+async def submit_requirement(req_id: str, user: dict = Depends(current_user)):
+    req = await db.requirements.find_one({"id": req_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not req: raise HTTPException(404, "Not found")
+    if not (req.get("document_ids") or []):
+        raise HTTPException(400, "Attach evidence first")
+    before = req.get("verification") or {}
+    ver = {**before, "status": "evidence_submitted", "submitted_at": now_iso()}
+    await db.requirements.update_one({"id": req_id, "user_id": user["user_id"]},
+                                     {"$set": {"verification": ver, "status": "in_progress"}})
+    await _audit(user["user_id"], "participant", req.get("organization_id"),
+                 "requirement.submit", "requirement", req_id, before, ver)
+    return await db.requirements.find_one({"id": req_id, "user_id": user["user_id"]}, {"_id": 0})
+
+
+# ---------- Audit ----------
+@api_router.get("/audit/events")
+async def list_audit(user: dict = Depends(require_role("super_admin", "program_admin"))):
+    q: dict = {}
+    if user["_effective_role"] != "super_admin":
+        org_ids, _ = _org_program_scope(user["_bindings"], {"program_admin"})
+        q["org_id"] = {"$in": list(org_ids)}
+    return await db.audit_events.find(q, {"_id": 0}).sort("created_at", -1).limit(500).to_list(500)
+
+
+# ---------- Hook: auto-transition requirement on evidence attach ----------
+# Overrides the earlier link_requirement to also move state to evidence_submitted.
+_original_link = link_requirement  # noqa: F821  (defined earlier)
+
+
+@api_router.post("/requirements/{req_id}/mark-in-progress")
+async def mark_in_progress(req_id: str, user: dict = Depends(current_user)):
+    """Participant self-marks in_progress (only allowed when verification is not required OR state permits)."""
+    req = await db.requirements.find_one({"id": req_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not req: raise HTTPException(404, "Not found")
+    ver = req.get("verification") or {}
+    if ver.get("required") and ver.get("status") in {"verified"}:
+        raise HTTPException(400, "Requirement already verified")
+    await db.requirements.update_one({"id": req_id, "user_id": user["user_id"]},
+                                     {"$set": {"status": "in_progress",
+                                               "verification": {**ver, "status": "in_progress"}}})
+    return await db.requirements.find_one({"id": req_id, "user_id": user["user_id"]}, {"_id": 0})
+
+
+# ============  END PHASE 1 + 2 ADDITIONS  ============
+
+
+
 @app.on_event("startup")
 async def startup():
     try: init_storage()
     except Exception as e: logger.warning(f"Storage init failed: {e}")
     await seed_global_content()
     await ensure_owner()
+    await ensure_platform_tenants()   # Phase 1: BBC org + A Path Forward program + backfill
     logger.info("Startup complete")
 
 
