@@ -6,9 +6,13 @@ import { ACCENT } from "@/lib/doorways";
 import { ProgressBar } from "@/components/Bits";
 import AffirmationCard from "@/components/AffirmationCard";
 import ParticipantAlerts from "@/components/ParticipantAlerts";
+import JourneyStrip from "@/components/journey/JourneyStrip";
+import WelcomeModal from "@/components/journey/WelcomeModal";
+import BlueprintDoor from "@/components/journey/BlueprintDoor";
+import JourneyKey from "@/components/journey/JourneyKey";
 import {
   ArrowRight, Calendar, Target, Sparkles, Bot, ClipboardList,
-  Trophy, Compass, Clock,
+  Trophy, Compass, Clock, KeyRound,
 } from "lucide-react";
 
 function greeting() {
@@ -25,28 +29,40 @@ export default function DashboardV2() {
   const [ereadiness, setEreadiness] = useState(null);
   const [actions, setActions] = useState([]);
   const [visits, setVisits] = useState([]);
+  const [journey, setJourney] = useState(null);
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
 
   useEffect(() => { (async () => {
     try {
-      const [m, d, e, a, v] = await Promise.all([
+      const [m, d, e, a, v, j] = await Promise.all([
         api.get("/auth/me").then(r => r.data),
         api.get("/dashboard/summary").then(r => r.data),
         api.get("/ereadiness/progress").then(r => r.data).catch(() => null),
         api.get("/action-map").then(r => r.data).catch(() => []),
         api.get("/hub-visits/recent").then(r => r.data.visits).catch(() => []),
+        api.get("/journey/state").then(r => r.data).catch(() => null),
       ]);
-      // Defensive client-side de-dup: even if the server returns duplicate
-      // rows for the same key (rare upsert race before the unique index
-      // rollout), we only render each key once — first-in wins because the
-      // server sorts by last_visited_at desc.
       const seen = new Set();
       const uniqV = (v || []).filter((x) => {
         if (!x?.key || seen.has(x.key)) return false;
         seen.add(x.key); return true;
       });
       setMe(m); setDash(d); setEreadiness(e); setActions(a); setVisits(uniqV);
+      setJourney(j);
+      // Auto-open welcome modal once, after Blueprint completion.
+      if (j && j.signals?.blueprint_completed && !j.state?.welcome_seen) {
+        setWelcomeOpen(true);
+      }
     } catch {}
   })(); }, []);
+
+  const dismissWelcome = async () => {
+    setWelcomeOpen(false);
+    try {
+      const { data } = await api.post("/journey/welcome-seen", { seen: true });
+      setJourney(data);
+    } catch {}
+  };
 
   const firstName = useMemo(() => (me?.name || "").split(" ")[0] || "there", [me]);
   const topAction = useMemo(() => actions.find((a) => !a.declined && a.status !== "completed" && (a.priority || 0) >= 3) ||
@@ -58,6 +74,8 @@ export default function DashboardV2() {
   return (
     <div className="space-y-6" data-testid="dashboard-v2">
       <ParticipantAlerts />
+
+      <WelcomeModal open={welcomeOpen} onBegin={dismissWelcome} />
 
       <div className="rounded-3xl px-6 md:px-8 py-6 md:py-8 relative overflow-hidden"
         style={{
@@ -73,6 +91,19 @@ export default function DashboardV2() {
           One step today still moves you forward. Here's where you left off and what deserves your attention.
         </p>
       </div>
+
+      {/* Journey strip — always visible, shows the 5-stage story */}
+      {journey && (
+        <JourneyStrip
+          stage={journey.stage}
+          welcomeSeen={journey.state?.welcome_seen}
+          onOpenJourney={() => nav("/app/journey")} />
+      )}
+
+      {/* Graduation celebration card — replaces standard focus if graduated */}
+      {journey?.state?.graduation_approved && (
+        <GraduationDashboardCard onOpen={() => nav("/app/journey")} />
+      )}
 
       <AffirmationCard />
 
@@ -210,4 +241,33 @@ function accentFor(sectionKey) {
   if (sectionKey === "requirements") return ACCENT.compliance;
   if (sectionKey === "life-skills") return ACCENT.life;
   return ACCENT.identity;
+}
+
+function GraduationDashboardCard({ onOpen }) {
+  return (
+    <div
+      className="rounded-3xl p-5 md:p-7 relative overflow-hidden cursor-pointer group"
+      onClick={onOpen}
+      style={{
+        background:
+          "radial-gradient(500px 220px at 90% -20%, #F5D28F66 0%, transparent 60%), " +
+          "linear-gradient(135deg, #FBF3E9 0%, #EED2E0 60%, #DCEDE8 100%)",
+        border: "1px solid #E4CDBF",
+      }}
+      data-testid="dash-graduation-card">
+      <div className="flex items-center gap-4">
+        <JourneyKey size={44} tone="gold" glow />
+        <div className="flex-1">
+          <div className="overline text-[#8E4E5A]">Graduation</div>
+          <div className="font-display text-xl md:text-2xl text-[#1B1033] leading-tight mt-1">
+            You built the key. The next door is ready.
+          </div>
+          <p className="text-sm text-slate-700 mt-1">
+            Open your journey to see what comes next — on your terms.
+          </p>
+        </div>
+        <ArrowRight className="w-5 h-5 text-[#4a2a5a] group-hover:translate-x-1 transition-transform" />
+      </div>
+    </div>
+  );
 }

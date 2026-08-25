@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { SECTIONS } from "@/lib/sections";
-import { LayoutDashboard, Menu, LogOut, Shield, Bot, Library, Lock, X, Sparkles, ClipboardList, Compass } from "lucide-react";
+import { LayoutDashboard, Menu, LogOut, Shield, Bot, Library, Lock, X, Sparkles, ClipboardList, Compass, KeyRound, Users } from "lucide-react";
 import BridgeChat from "@/components/BridgeChat";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -61,6 +61,7 @@ export default function Layout({ children }) {
 
       <nav className="flex-1 overflow-y-auto thin-scroll px-3 py-4 space-y-1 relative">
         <NavItem to="/app" icon={LayoutDashboard} label="My Blueprint" testId="nav-dashboard" />
+        <NavItem to="/app/journey" icon={KeyRound} label="My Journey" testId="nav-journey" />
         <NavItem to="/app/blueprint/intake" icon={Sparkles} label="Full Blueprint" testId="nav-full-blueprint" />
         <NavItem to="/app/assessments" icon={ClipboardList} label="Assessments" testId="nav-assessments" />
         <NavItem to="/app/resources" icon={Compass} label="Resources" testId="nav-resources" />
@@ -70,6 +71,9 @@ export default function Layout({ children }) {
         <div className="pt-3 mt-3 border-t border-white/10 space-y-1">
           <NavItem to="/app/library" icon={Library} label="Learn & Resources" testId="nav-library" />
           <NavItem to="/app/privacy" icon={Lock} label="Privacy & Sharing" testId="nav-privacy" />
+          {(user?.memberships || []).some((m) => ["super_admin", "program_admin", "program_staff"].includes(m?.role)) && (
+            <NavItem to="/staff/journey" icon={Users} label="Staff · Journey" testId="nav-admin-journey" />
+          )}
         </div>
       </nav>
 

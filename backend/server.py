@@ -2917,6 +2917,14 @@ _resources_v2.register(
 )
 
 
+# ============= GRADUATION JOURNEY & BUILD MY BLUEPRINT™ DOORWAY =============
+import journey as _journey  # noqa: E402
+_journey.register(
+    db, api_router, current_user, require_role,
+    now_iso, new_id, _audit,
+)
+
+
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware, allow_credentials=True,

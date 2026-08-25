@@ -35,6 +35,8 @@ import QuizRunner from "@/pages/QuizRunner";
 import DigitalHub from "@/pages/DigitalHub";
 import { ResourcesHub, ResourcesBrowse, ResourcesSaved, ResourceDetail } from "@/pages/Resources";
 import FindHelp from "@/pages/FindHelp";
+import Journey from "@/pages/Journey";
+import AdminJourney from "@/pages/AdminJourney";
 
 const DEEP = {
   "requirements": Requirements,
@@ -82,6 +84,8 @@ function AppRouter() {
       <Route path="/app/resources/saved" element={<Protected><ResourcesSaved /></Protected>} />
       <Route path="/app/resources/:id" element={<Protected><ResourceDetail /></Protected>} />
       <Route path="/app/find-help" element={<Protected><FindHelp /></Protected>} />
+      <Route path="/app/journey" element={<Protected><Journey /></Protected>} />
+      <Route path="/staff/journey" element={<Protected><AdminJourney /></Protected>} />
       <Route path="/app/emergency" element={<Protected><EmergencySettings /></Protected>} />
       <Route path="/app/transportation" element={<Protected><TransportationDeep /></Protected>} />
       <Route path="/staff/caseload" element={<Protected><StaffCaseload /></Protected>} />

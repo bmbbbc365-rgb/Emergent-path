@@ -1,0 +1,32 @@
+{
+  "summary": "Full backend + frontend validation of the Graduation Journey & Build My Blueprint\u2122 Doorway. Backend: pytest tests/test_journey.py \u2192 9/9 passed (default state, welcome-seen persistence, interest 400 before graduation, transition/view silent no-op, admin list 403 for participant / 200 for super_admin, full graduate\u2192view\u2192interest(interested/not_now)\u2192revoke flow, duplicate graduate 400, unknown user 404, self-graduate 403, milestone add/remove). Frontend (Playwright, owner account): login \u2192 dashboard renders one-time WelcomeModal ('You have a plan. Now you get to build it.') and dismisses via journey-welcome-begin; JourneyStrip renders all 5 stages (enter/build/graduate/unlock/expand) with key SVG; sidebar shows nav-journey and nav-admin-journey; /app/journey shows locked BMB door + evidence tiles (Blueprint/Assessments/Employment/Digital) + recognized milestones and NO celebration card while ungraduated. /staff/journey lists participants with stage badge + search, detail modal opens, milestone add persists, Approve graduation flips to Revoke state, dashboard then shows dash-graduation-card and /app/journey hero flips to 'You built the key.' with 'Graduated 8/25/2026' badge. TransitionPage shows 3 info cards + 'what you should know' checklist + single outbound <a href=https://buildmyblueprintbbc.com target=_blank rel=noopener noreferrer> (data-testid=transition-bmb-link) \u2014 no auto-redirect, no checkout, no enrollment. 'I'm interested' and 'Not right now' both record with toast + 'Currently recorded' echo. Milestone removal and graduation revoke both work (native confirm accepted). All 11 core routes smoke-loaded without blank screens. Owner account left NON-graduated (stage=build, graduation_approved=false, TEST_QA milestone cleaned up).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "AdminJourney detail modal", "issues": ["'Revoke graduation' and milestone 'Remove' use native window.confirm() instead of a shadcn AlertDialog \u2014 inconsistent with the rest of the UI and auto-dismissed by automation (initially made revoke appear to fail). Recommend AlertDialog."]},
+      {"screen": "WelcomeModal", "issues": ["DialogContent has no DialogTitle \u2192 Radix a11y console warning ('DialogContent requires a DialogTitle'). Wrap the headline in DialogTitle or VisuallyHidden."]},
+      {"screen": "Dashboard JourneyStrip", "issues": ["Stage carousel is horizontally scrollable (intentional snap-x) but at 1920px the 4th/5th cards are clipped with no visible scroll affordance/arrow \u2014 users may not realise Unlock/Expand exist. Minor."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_journey.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional: replace window.confirm in AdminJourney (revoke + milestone remove) with shadcn AlertDialog",
+    "Optional: add DialogTitle (or VisuallyHidden) to WelcomeModal to clear a11y warning",
+    "Optional: add scroll affordance/arrows to JourneyStrip on desktop"
+  ],
+  "critical_code_review_comments": [
+    "journey.py: revoke-graduation intentionally keeps transition_viewed / interested_in_continuing as history \u2014 verified stage falls back correctly (build/enter), but the stale interest is still shown in the admin modal ('Decision: ...') after revoke; consider labelling it 'previous decision'.",
+    "No 'Coming Soon' placeholders in the journey feature. The only 'coming soon' strings are pre-existing video notes in lib/doorways.js (content annotations, not empty doors).",
+    "Only journey outbound BMB reference is the plain anchor in TransitionPage; Landing.jsx footer/utility links to buildmyblueprintbbc.com are pre-existing marketing links, no redirect logic anywhere."
+  ],
+  "updated_files": ["/app/backend/tests/_work/owner_state.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Throwaway journey_*@example.com participants created by pytest; TEST_QA Milestone added and removed on owner account. Owner left ungraduated with welcome_seen=true.",
+  "should_call_test_agent_after_fix": false,
+  "should_main_agent_self_test": true,
+  "test_credentials": "heatherprejean7325@gmail.com / Blueprint2026! (super_admin+participant)",
+  "context_for_next_testing_agent": "Owner uid = user_474b88fe68cb4a89. Helper script /app/backend/tests/_work/owner_state.py [show|revoke|unseen] prints/mutates owner journey state (use 'unseen' to re-trigger the welcome modal, 'revoke' to un-graduate). Admin revoke/milestone-remove use native confirm() \u2014 Playwright must register page.on('dialog', d.accept()).",
+  "rca_of_the_issue": "Initial apparent failures were test-harness artifacts: (1) dashboard graduation card testid is 'dash-graduation-card' not 'graduation-celebration'; (2) revoke appeared to fail because Playwright auto-dismisses window.confirm. Both re-verified passing after harness fixes; no product defects found."
+}

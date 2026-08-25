@@ -171,3 +171,42 @@ The A Path Forward resource experience is now a real system, not a set of labels
 - **Category color**: `ACCENT.digital` = `#2E5266` (deep teal), sitting visually next to Employment so the digital area reads as work-adjacent.
 - **hub_visits race fix** (found during Digital section testing): `blueprint_v2.py` now creates a unique compound index on `(participant_user_id, key)` and runs a one-time de-dup at register time. `DashboardV2` also de-dups defensively client-side — eliminates the React duplicate-key console warning.
 - **Verified by testing_agent** (`iteration_4.json`): 100% frontend pass — all 12 tiles render, tile→doorway navigation works, video placeholders render on every digital doorway, template Copy button writes to clipboard (verified 237 chars), external Do-tab links open in a new tab, sidebar entry routes correctly, mobile 390px layout has no horizontal overflow, and 9 core routes remain unaffected.
+
+## Graduation Journey & Build My Blueprint™ Doorway (Feb 2026)
+The participant-facing "Enter → Build → Graduate → Unlock → Expand" journey lives inside A Path Forward as an aspirational reentry story. A Path Forward and Build My Blueprint™ remain **separate applications** — this feature only prepares the transition, it never redirects, transfers data, or enrolls anyone.
+
+### Backend (`backend/journey.py`)
+- New `journey_state` collection keyed on `participant_user_id`. Fields: `welcome_seen`, `milestones[]`, `graduation_approved`, `graduation_date`, `graduation_approved_by`, `graduation_note`, `transition_offered_at`, `transition_viewed`, `interested_in_continuing`, `decision_at`, `handoff_status`.
+- **`_readiness_signals(uid)`** computes live evidence from existing collections (blueprint_full_progress, assessment_results, ereadiness_progress, action_map_items). Signals are **advisory only** — never auto-graduate.
+- **Stage derivation**: `expand > unlock > graduate > build > enter`. Requires `graduation_approved` for the last three; falls back to `build` on revoke.
+- Endpoints:
+  - `GET /api/journey/state` (participant) — hydrated snapshot.
+  - `POST /api/journey/welcome-seen` — one-time modal ack.
+  - `POST /api/journey/transition/view` — records the participant opened the "See What's Next" page (silent no-op when not graduated).
+  - `POST /api/journey/transition/interest` `{choice: interested|not_now}` — 400 if not graduated. Records decision without enrolling anyone.
+  - **Admin only** (super_admin/program_admin, staff can read):
+    - `GET /api/admin/journey` — list + snapshot for every enrolled participant.
+    - `GET /api/admin/journey/{user_id}` — detailed snapshot.
+    - `POST /api/admin/journey/{user_id}/graduate` — approves. 400 if duplicate.
+    - `POST /api/admin/journey/{user_id}/revoke-graduation`.
+    - `POST /api/admin/journey/{user_id}/milestone` + `DELETE .../milestone/{id}`.
+- All admin actions audit-logged via `_audit(...)` under `journey.*` action names.
+
+### Frontend
+- **`components/journey/`**: `JourneyKey.jsx` (elegant gradient SVG key with optional glow), `JourneyStrip.jsx` (5-stage horizontal responsive story on the dashboard), `WelcomeModal.jsx` (one-time post-Blueprint welcome), `BlueprintDoor.jsx` (Framer Motion door + key animation; locked/unlocked variants).
+- **`pages/Journey.jsx`** at `/app/journey` — participant journey hub. Warm plum→rose-gold hero switches to "You built the key" once graduated. Evidence tiles (Blueprint / Assessments / E-Ready / Actions), recognized milestones, and either the locked-door section (pre-grad) or the graduation celebration with the interactive door. Tapping the key opens the **TransitionPage** (in-page, no route change): informational cards + a "before you decide" checklist + optional outbound link to `https://buildmyblueprintbbc.com` (opens new tab) + `[I'm interested]` / `[Not right now]` decision buttons.
+- **`pages/AdminJourney.jsx`** at `/staff/journey` — program admin/staff panel: participant list with stage badge + evidence mini-stats, click-through detail modal with milestones CRUD and Approve/Revoke Graduation actions with optional note. Signals shown as evidence, not automation.
+- **`DashboardV2.jsx`** now shows the JourneyStrip; auto-opens the Welcome modal once when Blueprint is complete and `welcome_seen == false`; displays a "You built the key. The next door is ready." graduation card when graduated (replaces standard focus card).
+- **`Layout.jsx`** sidebar adds `My Journey` (KeyRound icon) for all users and `Staff · Journey` for anyone whose memberships include `super_admin/program_admin/program_staff`.
+- **`App.js`** routes `/app/journey` and `/staff/journey`.
+
+### Tests
+- `tests/test_journey.py` — 9 tests: default state = `enter`, welcome-seen persists, transition-locked-without-graduation (400 on interest, silent view), admin list forbidden for participants, full flow (graduate → view → not-now → interested → revoke), duplicate grad blocked, milestone add/remove, 404 unknown user, participant self-graduation forbidden (403).
+- Full new-module regression: `test_journey + test_resources_v2 + test_signed_urls + test_learning_journal` = 40/40 pass, 5 skipped.
+
+### Product boundaries preserved
+- No Build My Blueprint™ code or database mutations. BMB link is a single external anchor with `target=_blank rel=noopener noreferrer`.
+- No pricing, no checkout, no auto-enrollment.
+- Graduation is strictly admin-controlled; participant can never self-approve.
+- Transition endpoint refuses interest recording before graduation (400).
+- Revoking graduation returns the participant to `build`/`enter` while keeping historical `interested_in_continuing`/`transition_viewed` fields for audit continuity.
