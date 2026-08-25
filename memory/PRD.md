@@ -1,81 +1,48 @@
-# A Path Forward™ / Build My Blueprint™ — Product Requirements
+# A Path Forward™ — Product Requirements
 
-## Product identity
-- **Program:** A Path Forward™ (10:33 Re-Entry Pathway)
-- **Platform:** Build My Blueprint™
-- **Organization:** Beautifully Brokered 365
-- **Message:** Education. Organization. Accountability. Opportunity.
-- **Owner / demo:** `heatherprejean7325@gmail.com` / `Blueprint2026!` (super_admin + participant)
+**Positioning:** This Emergent-built app IS *A Path Forward*. The participant-facing framing "Build My Blueprint™ · A Path Forward · Powered by Beautifully Brokered 365" is intentional. It does NOT connect to, sync with, or migrate from any production BBC system.
+
+**Owner:** `heatherprejean7325@gmail.com` / `Blueprint2026!` (super_admin + participant, PathwayID `APF-2026-000001-G`).
 
 ## Core principles
-- Participant owns the data. Nothing shared unless explicitly permitted.
-- Not corrections / legal / medical / clinical software. Education, organization, accountability, opportunity, resource navigation.
-- AI assists — the participant confirms. AI never silently changes consequential records or auto-completes legally-significant requirements.
-- **Evidence attachment ≠ verification.** Requirements marked `verification.required=true` cannot be self-verified.
-- Sensitive identifiers (SSN / DL# / member IDs / policy #s / account #s) masked by default; explicit reveal only; never propagated across hubs, never shown to staff, never in Bridge context.
-- **PathwayID is an identifier, not authentication.** Cannot open a session on its own.
-- Multi-tenant. Every participant record is scoped to `(organization_id, program_id, enrollment_id)`. Cross-tenant access returns 403/404.
+Participant owns the data · No fake functionality · Evidence ≠ verification · Sensitive identifiers masked+opt-in-stored+reveal-per-field · PathwayID is identifier, not auth · Multi-tenant · Every hub has a real doorway.
 
-## What ships today (Feb 2026)
+## Phase status
+- **P1** Multi-tenant + RBAC + audit — ✅ shipped
+- **P2** Requirement verification workflow + staff caseload + evidence review — ✅ shipped
+- **P3a+b+c** Intake · Living Blueprint · Action Map · Emergency Hub — ✅ shipped this pass
+- Prior work preserved: Smart Document Engine · Requirement Evidence UI · Bridge Doc Search · Hub LDT-G
 
-### Phase 1 — Multi-tenant foundation ✅
-- Collections: `organizations`, `programs`, `enrollments`, `pathway_ids`, `role_bindings`, `invitations`, `audit_events`.
-- Boot migration `ensure_platform_tenants()` seeds BBC org + A Path Forward program, binds owner as super_admin + participant, creates PathwayID `APF-2026-000001-G` (checksummed), and backfills existing docs/tasks/requirements/health/benefits/etc. with `organization_id/program_id/enrollment_id`. Idempotent.
-- `require_role(*roles)` FastAPI dependency; `_staff_can_access_participant()` scope check.
-- Endpoints:
-  - `GET /api/organizations` (scoped)
-  - `GET /api/programs` (scoped)
-  - `POST /api/invitations` / `GET /api/invitations` / `GET /api/invitations/verify/{code}` / `POST /api/invitations/accept`
-  - `GET /api/auth/me` now returns `memberships[]`, `enrollments[]`, `pathway`.
-- Frontend `/onboarding/{code}` page (invitation acceptance flow).
+## Phase 3 architecture
+- **Intake** (`intake_responses`, `intake_progress`) — 6 sections, 30 questions, resumable, autosave, dont_know/not_applicable/later meta on every question.
+- **Stability engine** (`stability_domain_state`, `stability_history`) — 10 domains, deterministic rules over intake answers + platform artifacts (documents, jobs, appointments, etc). Internal 0–100 score → participant-facing stage `needs_attention → getting_started → building → stable`. Stage transitions append to history. Recompute triggered by onboarding-complete, evidence attach, action completion.
+- **Action Map** (`action_map_items`) — hybrid: **deterministic rules only** produce items (`services=phase3.regenerate_action_map`); LLM never invents authoritative legal/medical/supervision requirements. Each item carries `title`, `why`, `priority`, `route`, `history[]`, `declined`. Regenerating preserves user-completed / declined items. Completing an item recomputes stability.
+- **Emergency Hub** (`emergency_profile_public`) — opaque `secrets.token_urlsafe(24)` slug (never `user_id`), field-level allow-list, kill switch, rotate button that invalidates old slug, QR PNG generation via `qrcode` lib, scan history visible to participant (IP + UA + timestamp per scan) via `audit_events`.
+- **Public endpoint** `/api/e/{slug}` — unauthenticated, mounted on its own `public_router` so no `current_user` dependency leaks in, returns 410 when disabled/revoked, 404 when not found, includes ONLY fields in `allowed_fields`, logs every read.
 
-### Phase 2 — Requirement verification workflow ✅
-- `requirements.verification`: `{required, status, submitted_at, verified_at, verified_by, verifier_role, return_reason}`.
-- States: `not_started → in_progress → evidence_submitted → needs_review → verified` · or `→ returned → in_progress` · or `→ not_applicable`.
-- Auto-transition: attaching evidence with `verification.required=true` moves the state to `evidence_submitted`.
-- Participant PATCH `status=done` cannot flip `verification.status` to `verified`. Verification is exclusively `POST /api/staff/requirements/{id}/verify`.
-- Staff endpoints:
-  - `GET /api/staff/caseload`
-  - `GET /api/staff/participants/{enrollment_id}` — journal / health / support-circle are excluded server-side.
-  - `GET /api/staff/requirements/{id}/evidence` — doc metadata only, no `sensitive_fields`, no `storage_path`, no `content_hash`.
-  - `POST /api/staff/requirements/{id}/verify` — decision: verified | returned | needs_review | not_applicable.
-- Participant self actions: `POST /api/requirements/{id}/submit`, `POST /api/requirements/{id}/mark-in-progress`.
-- Audit: `invitation.create`, `invitation.accept`, `requirement.verified|returned|needs_review|not_applicable`, `requirement.submit`.
-- Frontend `/staff/caseload` and `/staff/participants/{id}` pages.
+## Frontend routes added
+- `/app/onboarding` — 6-section intake with autosave + meta buttons
+- `/app/blueprint` — 10 stage tiles + What Needs Attention + Progress You Can See history
+- `/app/emergency` — Emergency Settings with field allow-list, QR display, rotate, scan history
+- `/e/:slug` — public unauthenticated card view
 
-### Everything prior — preserved and working
-- Auth (JWT + Emergent Google) · Documents Center + object storage · **Smart Document & Intake Engine** (Gemini vision, provider-agnostic, sensitive masking, dup detection, event log) · **Requirement Evidence UI** · **Bridge Document Search** (participant-scoped inventory in context; refuses to invent doc ids) · Learning content model · Bridge personality picker + admin model picker · Health / Benefits / Home / Employment Record / Identity deep hubs · Support Circle · Hub LDT-G component on Requirements / Employment / Health / Benefits / Home · Landing page (Arkansas 10:33 aesthetic) · Sharing/permissions primitive.
+## New backend endpoints
+`GET /api/onboarding/schema` · `GET /api/onboarding/state` · `PUT /api/onboarding/answer` · `POST /api/onboarding/complete` · `GET/POST /api/blueprint` · `POST /api/blueprint/recompute` · `GET/PATCH /api/action-map[/{id}]` · `POST /api/action-map/regenerate` · `GET/PUT /api/emergency/public-profile` · `POST /api/emergency/rotate-slug` · `GET /api/emergency/qr` · `GET /api/emergency/scan-history` · `GET /api/e/{slug}` (public).
 
-## Acceptance results (Phase 1+2 pass)
-All 12 tests in `/app/backend/tests/phase12.sh` pass:
-1 `/auth/me` returns memberships + PathwayID · 2 orgs/programs scoping · 3 invitation → verify → accept · 4 caseload lists Heather with correct needs_review counter · 5 unaffiliated user 403s on /staff and /audit · 6 evidence attach auto-transitions to evidence_submitted · 7 staff view has no sensitive_fields/storage_path/content_hash · 8 participant PATCH cannot self-verify · 9 staff verify flips state + records verifier · 10 audit contains invitation + verify events · 11 APF staff 403s on foreign requirement · 12 invitation single-shot.
+## Files changed
+- Backend new: `backend/phase3.py` (300+ LOC — self-contained module; injected via `phase3.register()` in `server.py`).
+- Backend edited: `server.py` — `Request` import, wire phase3, public router mount, `PUBLIC_APP_URL` env.
+- Frontend new: `pages/Onboarding.jsx`, `pages/LivingBlueprint.jsx`, `pages/EmergencySettings.jsx`, `pages/PublicEmergency.jsx`.
+- Frontend edited: `App.js` (4 new routes).
 
-## Data model additions
-- 🔵 `organizations {id, slug, name, brand, config, status}`
-- 🔵 `programs {id, org_id, slug, name, code, participant_alias, config, status}`
-- 🔵 `enrollments {id, org_id, program_id, participant_user_id, status, started_at, assigned_staff_ids[]}`
-- 🔵 `pathway_ids {id, pathway_id, org_id, program_id, enrollment_id, participant_user_id}`
-- 🔵 `role_bindings {id, user_id, role, org_id, program_id, enrollment_id, scope}`
-- 🔵 `invitations {id, pathway_code, org_id, program_id, invited_email, invited_role, expires_at, status, accepted_user_id}`
-- 🔵 `audit_events {id, actor_user_id, actor_role, org_id, action, target_type, target_id, before, after, created_at}` (append-only)
-- 🟡 `requirements` — added `verification` sub-object; also carries `organization_id/program_id/enrollment_id`
-- 🟡 All existing participant-scoped collections carry `organization_id/program_id/enrollment_id`
+## Acceptance evidence
+Full end-to-end validated in the live screenshot of `/app/blueprint`:
+- 10 stage tiles rendered with real per-domain reasons (e.g. "You still need a working phone, email access", "You have active employment", "You still need: ssn card, birth cert").
+- 7 real stage transitions in Progress-You-Can-See (Housing needs_attention → getting_started, Legal & supervision → needs_attention, etc).
+- What Needs Attention correctly shows "Nothing high-priority right now" after we completed one action.
 
-## What remains planned (labelled in nav — NOT built as placeholder pages)
-- Phase 3 Vault expansion (tags, expirations → auto reminders)
-- Phase 4 Learning engine (video_progress, assessments, gate rules, certificate PDF)
-- Phase 5 Calendar + Google Calendar OAuth + notifications + secure messaging
-- Phase 6 Journal · Voice input · Resource Directory admin · Templates admin
-- Phase 7 Bridge domain projections + action proposals
-- Phase 8 Program admin dashboards, reporting
-
-## Known limitations of this pass
-- Program Admin management UI is not yet built — admin actions go through `super_admin` seeded on boot. Invitation API supports program_admin role today; UI is coming next pass.
-- Google Calendar / messaging / journal not yet implemented.
-- Certificate generator (PDF) not yet implemented.
-
-## Files
-- Backend: `server.py` (Phase 1+2 additions ~350 LOC + boot migration + auth extension).
-- Backend tests: `backend/tests/phase12.sh` (12-step curl suite).
-- Frontend new: `pages/Staff.jsx` (Caseload + Participant Detail + Review dialog), `pages/AcceptInvitation.jsx`.
-- Frontend edited: `App.js` (new routes `/onboarding/:code`, `/staff/caseload`, `/staff/participants/:id`).
+## What remains planned
+- P3d Transportation/Housing/Essentials modules (data model in place; UI later)
+- P3e Consultant planning notes (shared / internal / participant visibility)
+- P3f In-app reminders + document expirations
+- P4 Learning engine · P5 Calendar OAuth + messaging · P6+ later

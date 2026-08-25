@@ -23,7 +23,7 @@ import requests
 from dotenv import load_dotenv
 from fastapi import (
     APIRouter, Cookie, Depends, FastAPI, File, Header, HTTPException,
-    Query, Response, UploadFile,
+    Query, Request, Response, UploadFile,
 )
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -2627,6 +2627,56 @@ async def startup():
 @api_router.get("/health")
 async def health():
     return {"status": "ok", "app": "a-path-forward"}
+
+
+# ============= PHASE 3 wiring =============
+import phase3 as _phase3  # noqa: E402
+_phase3.register(
+    db, api_router, current_user, require_role,
+    now_iso, new_id, _audit,
+    os.environ.get("PUBLIC_APP_URL") or "",
+)
+
+# Public (unauthenticated) emergency endpoint — must NOT sit under api_router because
+# some scanners will hit it directly. It's mounted on the app with the /api prefix
+# so it still routes through the ingress.
+public_router = APIRouter(prefix="/api")
+
+
+@public_router.get("/e/{slug}")
+async def public_emergency(slug: str, request: Request):
+    rec = await db.emergency_profile_public.find_one({"public_slug": slug}, {"_id": 0})
+    if not rec:
+        raise HTTPException(404, "Not found")
+    if not rec.get("enabled") or rec.get("revoked_at"):
+        raise HTTPException(410, "Emergency access is disabled")
+    ep = await db.emergency_profile.find_one({"user_id": rec["participant_user_id"]}, {"_id": 0}) or {}
+    allowed = set(rec.get("allowed_fields") or [])
+    # Return ONLY authorized fields. Never SSN, DL#, etc.
+    projection = {}
+    for f in ("name", "dob", "blood_type", "allergies", "conditions_summary",
+              "medications_summary", "healthcare_proxy", "communication_needs",
+              "advance_directive", "emergency_contacts", "organ_donor", "dnr"):
+        if f in allowed and ep.get(f) not in (None, "", []):
+            projection[f] = ep.get(f)
+    # Log scan (participant sees this as "someone scanned your emergency card")
+    ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "")[:200]
+    await db.audit_events.insert_one({
+        "id": new_id("aud_"), "actor_user_id": None, "actor_role": "public",
+        "org_id": None, "action": "emergency.public_view",
+        "target_type": "emergency_public", "target_id": rec["participant_user_id"],
+        "before": None, "after": {"ip": ip, "ua": ua},
+        "created_at": now_iso(),
+    })
+    await db.emergency_profile_public.update_one(
+        {"public_slug": slug}, {"$inc": {"scan_count": 1}, "$set": {"last_scan_at": now_iso()}}
+    )
+    return {"profile": projection, "generated_at": now_iso()}
+
+
+app.include_router(public_router)
+# ============= END PHASE 3 wiring =============
 
 
 app.include_router(api_router)

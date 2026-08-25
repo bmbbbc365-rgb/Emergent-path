@@ -21,6 +21,10 @@ import DocumentScan from "@/pages/DocumentScan";
 import DocumentDetail from "@/pages/DocumentDetail";
 import { StaffCaseload, StaffParticipantDetail } from "@/pages/Staff";
 import AcceptInvitation from "@/pages/AcceptInvitation";
+import Onboarding from "@/pages/Onboarding";
+import LivingBlueprint from "@/pages/LivingBlueprint";
+import EmergencySettings from "@/pages/EmergencySettings";
+import PublicEmergency from "@/pages/PublicEmergency";
 
 const DEEP = {
   "requirements": Requirements,
@@ -52,6 +56,10 @@ function AppRouter() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/onboarding/:code" element={<AcceptInvitation />} />
+      <Route path="/e/:slug" element={<PublicEmergency />} />
+      <Route path="/app/onboarding" element={<Protected><Onboarding /></Protected>} />
+      <Route path="/app/blueprint" element={<Protected><LivingBlueprint /></Protected>} />
+      <Route path="/app/emergency" element={<Protected><EmergencySettings /></Protected>} />
       <Route path="/staff/caseload" element={<Protected><StaffCaseload /></Protected>} />
       <Route path="/staff/participants/:enrollmentId" element={<Protected><StaffParticipantDetail /></Protected>} />
       <Route path="/app" element={<Protected><Dashboard /></Protected>} />
