@@ -224,9 +224,15 @@ export default function Landing() {
                 <Link to="/login?tab=register" className="rounded-full bg-[#E4177C] hover:bg-[#B90D63] text-white font-medium px-6 py-3 inline-flex items-center gap-2" data-testid="hero-cta">
                   Start my Blueprint <ArrowRight className="w-4 h-4" />
                 </Link>
+                <Link to="/demo" className="rounded-full bg-white/95 hover:bg-white text-[#1B1033] font-medium px-6 py-3 inline-flex items-center gap-2" data-testid="explore-demo-cta">
+                  <Sparkles className="w-4 h-4 text-[#B76E79]" /> Explore the Demo
+                </Link>
                 <a href="#modules" className="rounded-full border border-white/25 hover:border-[#E8C7A0] text-white font-medium px-6 py-3">Explore the 10 modules</a>
                 <a href="#partner-layer" className="text-sm text-white/70 hover:text-white ml-1">For 10:33 partners →</a>
               </div>
+              <p className="mt-3 text-xs text-white/60 max-w-lg">
+                See how A Path Forward turns an individual starting point into a personalized pathway toward stability and independence. No sign-up. Fictional participant.
+              </p>
             </div>
 
             {/* Privacy shield card matching infographic */}

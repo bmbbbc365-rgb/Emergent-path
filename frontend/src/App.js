@@ -38,6 +38,7 @@ import FindHelp from "@/pages/FindHelp";
 import Journey from "@/pages/Journey";
 import AdminJourney from "@/pages/AdminJourney";
 import CategoryHub from "@/pages/CategoryHub";
+import DemoApp from "@/pages/demo/DemoApp";
 
 const DEEP = {
   "requirements": Requirements,
@@ -72,6 +73,7 @@ function AppRouter() {
       <Route path="/login" element={<Login />} />
       <Route path="/onboarding/:code" element={<AcceptInvitation />} />
       <Route path="/e/:slug" element={<PublicEmergency />} />
+      <Route path="/demo/*" element={<DemoApp />} />
       <Route path="/app/onboarding" element={<Protected><Onboarding /></Protected>} />
       <Route path="/app/blueprint" element={<Protected><LivingBlueprint /></Protected>} />
       <Route path="/app/blueprint/intake" element={<Protected><FullBlueprintIntake /></Protected>} />
