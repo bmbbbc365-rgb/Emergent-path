@@ -2896,6 +2896,129 @@ app.include_router(public_router)
 # ============= END PHASE 3 wiring =============
 
 
+# ============= PUBLIC DEMO BRIDGE — Builder Fest =============
+# Non-authenticated endpoint used by /demo. Uses a HARDCODED fictional
+# participant context (Jordan Carter) — never touches production data,
+# never accepts uploaded context. Rate-limited softly by IP.
+_DEMO_BRIDGE_CTX_JORDAN = """
+### FICTIONAL PARTICIPANT — PUBLIC DEMO
+This is A Path Forward's PUBLIC DEMO. The person you are helping is a
+fictional participant named JORDAN CARTER, invented for Builder Fest
+demonstration only. Never claim to know a real person's data. Never ask
+for or accept personal information. If a visitor asks a question outside
+Jordan's context, gently redirect to the demo topics.
+
+### JORDAN CARTER — Blueprint snapshot
+- Location: Rural Arkansas
+- Situation: Returned home 5 weeks ago; housing stable ~60 days with sister
+- Transportation: No personal vehicle; relies on rides + rural transit
+- Tech: Smartphone (Android); limited desktop experience
+- Sobriety: 11 months, weekly peer group
+- Prior work: 2 years warehouse experience (pre-incarceration)
+- Goal: Warehouse/manufacturing role within 60 days + open first bank account
+
+### IMMEDIATE PRIORITIES (ranked by leverage)
+1. Replace state ID — IN PROGRESS · blocks 4 downstream items (lease, hire, direct deposit, transit voucher)
+2. Reliable transportation plan — IN PROGRESS
+3. Finish resume (add dates) — IN PROGRESS
+4. Workforce readiness (OSHA-10) — ✓ COMPLETE
+5. Start employment applications — NOT STARTED (blocked by #1 and #3)
+
+### VAULT
+- Release documentation ✓
+- Birth certificate ✓
+- State ID — replacement needed
+- SSN card ✓
+- Resume — draft, dates missing
+- Workforce readiness certificate ✓
+
+### BARRIERS
+- No state ID (high)  · No vehicle (high)  · Limited computer confidence (med)
+- No bank account yet (med) · Small local employer network (low)
+
+### PROGRESS
+- ~42% of current Blueprint. 2 of 5 barriers resolved. Next unlock: DMV → ~60%.
+
+### RULES
+- Speak as Bridge AI — warm, direct, plain-language, 4th-grade reading level.
+- ALWAYS answer using Jordan's context above.
+- If asked about a real person or private data, decline and remind the visitor
+  this is a public demo with fictional data only.
+- Keep answers under ~140 words. End with a concrete next step when possible.
+"""
+
+# Very small in-memory rate limit — best-effort only.
+_DEMO_BRIDGE_HITS: dict[str, list[float]] = {}
+_DEMO_BRIDGE_MAX_PER_MIN = 8
+
+
+class _DemoBridgeIn(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+
+
+def _demo_rate_ok(ip: str) -> bool:
+    import time as _t
+    now = _t.time()
+    hits = [t for t in _DEMO_BRIDGE_HITS.get(ip, []) if now - t < 60]
+    if len(hits) >= _DEMO_BRIDGE_MAX_PER_MIN:
+        _DEMO_BRIDGE_HITS[ip] = hits
+        return False
+    hits.append(now)
+    _DEMO_BRIDGE_HITS[ip] = hits
+    return True
+
+
+_demo_public_router = APIRouter(prefix="/api")
+
+
+@_demo_public_router.post("/demo/bridge/chat")
+async def demo_bridge_chat(body: _DemoBridgeIn, request: Request):
+    """Public, no-auth Bridge for the /demo experience. Uses Jordan Carter
+    context only. Never reads or writes production user data."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
+
+    ip = (request.client.host if request and request.client else "anon") or "anon"
+    if not _demo_rate_ok(ip):
+        raise HTTPException(429, "Slow down — demo Bridge is rate-limited to keep costs sane.")
+
+    msg = (body.message or "").strip()
+    if not msg:
+        raise HTTPException(400, "Message is required")
+    if len(msg) > 500:
+        msg = msg[:500]
+
+    sid = body.session_id or f"demo_bridge_{new_id()}"
+    system_message = (
+        "You are Bridge AI for A Path Forward, a reentry support platform.\n"
+        + _DEMO_BRIDGE_CTX_JORDAN
+    )
+
+    chat = LlmChat(api_key=EMERGENT_LLM_KEY, session_id=sid,
+                   system_message=system_message
+                   ).with_model("openai", DEFAULT_BRIDGE_MODEL)
+
+    async def event_gen():
+        try:
+            async for ev in chat.stream_message(UserMessage(text=msg)):
+                if isinstance(ev, TextDelta):
+                    yield f"data: {ev.content.replace(chr(10), '<NL>')}\n\n"
+                elif isinstance(ev, StreamDone):
+                    break
+        except Exception as e:
+            logger.exception("Demo bridge stream error")
+            yield f"data: [Bridge is temporarily unavailable: {e}]\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+app.include_router(_demo_public_router)
+# ============= END PUBLIC DEMO BRIDGE =============
+
+
 # ============= BATCH A wiring — Full Blueprint · Assessments · EReadiness · Affirmations · Hub Visits =============
 import blueprint_v2 as _bpv2  # noqa: E402
 _bpv2.register(

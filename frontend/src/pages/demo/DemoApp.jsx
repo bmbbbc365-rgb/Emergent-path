@@ -1,22 +1,47 @@
-import React, { useState } from "react";
-import { Routes, Route, NavLink, Link, useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { Routes, Route, NavLink, Link, useNavigate, useLocation } from "react-router-dom";
+import { toast } from "sonner";
 import {
   Sparkles, Home, Compass, FileText, Bot, GraduationCap, MapPin, TrendingUp,
   Info, ArrowRight, ArrowLeft, RotateCcw, LogOut, Check, Circle, Clock, Lock,
-  Shield, Layers, Send,
+  Shield, Layers, Send, Share2, HelpCircle,
 } from "lucide-react";
 import {
   DEMO_PARTICIPANT, DEMO_BLUEPRINT, DEMO_VAULT, DEMO_ACTIONS, DEMO_LEARN_PATHWAY,
   DEMO_RESOURCE_MAP, DEMO_PROGRESS, DEMO_BRIDGE_SUGGESTIONS, demoBridgeAnswer,
 } from "./DemoData";
+import GuidedTour, { hasSeenDemoTour, resetDemoTour } from "./GuidedTour";
 
 const BRAND_IMG = "/journey-brand.png";
 
 /* ============================================================
  * DemoLayout — persistent Demo Mode banner + sidebar
  * ============================================================ */
-function DemoBanner() {
+function DemoBanner({ onStartTour }) {
   const nav = useNavigate();
+
+  const share = async () => {
+    const url = `${window.location.origin}/demo`;
+    const shareData = { title: "A Path Forward — Demo", text: "Explore the A Path Forward public demo (Builder Fest).", url };
+    try {
+      if (navigator.share && /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+        await navigator.share(shareData);
+        return;
+      }
+    } catch {}
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Demo link copied to clipboard");
+    } catch {
+      // Very old browsers fallback
+      const ta = document.createElement("textarea");
+      ta.value = url; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); toast.success("Demo link copied"); }
+      catch { toast.error("Could not copy — link is: " + url); }
+      finally { document.body.removeChild(ta); }
+    }
+  };
+
   return (
     <div className="w-full text-white px-4 py-2 text-xs md:text-sm flex flex-wrap items-center justify-between gap-2"
       style={{ background: "linear-gradient(90deg, #4a2a5a 0%, #B76E79 100%)" }}
@@ -27,7 +52,17 @@ function DemoBanner() {
         <span className="hidden sm:inline text-white/80">— Fictional participant · No real data.</span>
       </div>
       <div className="flex items-center gap-1.5">
-        <button onClick={() => nav("/demo")}
+        <button onClick={onStartTour}
+          className="rounded-full bg-white/15 hover:bg-white/25 text-white px-3 py-1 text-[11px] font-medium inline-flex items-center gap-1"
+          data-testid="demo-tour-open">
+          <HelpCircle className="w-3 h-3" /> 60-sec tour
+        </button>
+        <button onClick={share}
+          className="rounded-full bg-white/15 hover:bg-white/25 text-white px-3 py-1 text-[11px] font-medium inline-flex items-center gap-1"
+          data-testid="demo-share">
+          <Share2 className="w-3 h-3" /> Share
+        </button>
+        <button onClick={() => { resetDemoTour(); nav("/demo"); }}
           className="rounded-full bg-white/15 hover:bg-white/25 text-white px-3 py-1 text-[11px] font-medium inline-flex items-center gap-1"
           data-testid="demo-restart">
           <RotateCcw className="w-3 h-3" /> Start over
@@ -315,33 +350,118 @@ function DemoBridge() {
     { from: "bridge", text: "I know Jordan's current Blueprint, Vault, and progress. Ask me anything — try one of the suggested prompts below." },
   ]);
   const [input, setInput] = useState("");
+  const [streaming, setStreaming] = useState(false);
+  const [useLive, setUseLive] = useState(true); // toggle GPT vs scripted
+  const streamAbort = useRef(null);
+  const scrollRef = useRef(null);
 
-  const ask = (q) => {
-    if (!q.trim()) return;
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages]);
+
+  const backendURL = process.env.REACT_APP_BACKEND_URL || "";
+
+  const askLive = async (q) => {
+    setStreaming(true);
+    // Push placeholder assistant message we'll stream into.
+    setMessages((m) => [...m, { from: "bridge", text: "", streaming: true }]);
+    const ctrl = new AbortController();
+    streamAbort.current = ctrl;
+    try {
+      const res = await fetch(`${backendURL}/api/demo/bridge/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: q }),
+        signal: ctrl.signal,
+      });
+      if (res.status === 429) {
+        setMessages((m) => {
+          const cp = [...m]; cp[cp.length - 1] = { from: "bridge", text: "Slow down — the demo Bridge is rate-limited to keep hosting costs sane. Try one of the scripted prompts, or wait a moment." };
+          return cp;
+        });
+        return;
+      }
+      if (!res.ok || !res.body) throw new Error(`Bridge error ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "", finalText = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+        for (const p of parts) {
+          const line = p.replace(/^data:\s?/, "");
+          if (line === "[DONE]") continue;
+          if (line.startsWith("[Bridge is temporarily unavailable")) {
+            finalText += "\n" + line;
+          } else {
+            finalText += line.replaceAll("<NL>", "\n");
+          }
+          setMessages((m) => {
+            const cp = [...m]; cp[cp.length - 1] = { from: "bridge", text: finalText, streaming: true };
+            return cp;
+          });
+        }
+      }
+      setMessages((m) => {
+        const cp = [...m]; cp[cp.length - 1] = { from: "bridge", text: finalText || "…", streaming: false };
+        return cp;
+      });
+    } catch (e) {
+      setMessages((m) => {
+        const cp = [...m]; cp[cp.length - 1] = { from: "bridge", text: "Live Bridge is unavailable right now. Falling back to the scripted demo response.", streaming: false };
+        return cp;
+      });
+      // Fallback: scripted answer with actions
+      const answer = demoBridgeAnswer(q);
+      setMessages((m) => [...m, { from: "bridge", text: answer.text, actions: answer.actions || [] }]);
+    } finally {
+      setStreaming(false);
+      streamAbort.current = null;
+    }
+  };
+
+  const askScripted = (q) => {
     const answer = demoBridgeAnswer(q);
-    setMessages((m) => [
-      ...m,
-      { from: "user", text: q },
-      { from: "bridge", text: answer.text, actions: answer.actions || [] },
-    ]);
+    setMessages((m) => [...m, { from: "bridge", text: answer.text, actions: answer.actions || [] }]);
+  };
+
+  const ask = async (q) => {
+    if (!q.trim() || streaming) return;
+    setMessages((m) => [...m, { from: "user", text: q }]);
     setInput("");
+    if (useLive) await askLive(q);
+    else askScripted(q);
   };
 
   return (
     <>
       <ProfileHeader />
       <div className="mt-6 rounded-2xl bg-white border border-[#E4CDBF] p-5" data-testid="demo-bridge">
-        <div className="overline text-[#8E4E5A]">Bridge AI · contextual guide</div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="overline text-[#8E4E5A]">Bridge AI · contextual guide</div>
+          <label className="text-[11px] inline-flex items-center gap-2 select-none cursor-pointer"
+            data-testid="demo-bridge-mode-toggle">
+            <span className={`${useLive ? "text-[#4a2a5a] font-semibold" : "text-slate-400"}`}>Live GPT</span>
+            <input type="checkbox" checked={useLive} onChange={(e) => setUseLive(e.target.checked)}
+              className="sr-only peer" />
+            <span className="relative w-8 h-4 bg-slate-200 peer-checked:bg-[#B76E79] rounded-full transition
+              after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-3 after:h-3 after:bg-white after:rounded-full after:transition peer-checked:after:translate-x-4" />
+            <span className={`${!useLive ? "text-[#4a2a5a] font-semibold" : "text-slate-400"}`}>Scripted</span>
+          </label>
+        </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
           {DEMO_BRIDGE_SUGGESTIONS.map((s, i) => (
-            <button key={i} onClick={() => ask(s)}
-              className="rounded-full bg-[#F3E1D8]/70 border border-[#E4CDBF] hover:border-[#B76E79] text-[11px] text-[#1B1033] px-3 py-1"
+            <button key={i} onClick={() => ask(s)} disabled={streaming}
+              className="rounded-full bg-[#F3E1D8]/70 border border-[#E4CDBF] hover:border-[#B76E79] text-[11px] text-[#1B1033] px-3 py-1 disabled:opacity-50"
               data-testid={`demo-bridge-suggestion-${i}`}>{s}</button>
           ))}
         </div>
 
-        <div className="mt-4 space-y-2 max-h-[420px] overflow-y-auto pr-2">
+        <div ref={scrollRef} className="mt-4 space-y-2 max-h-[420px] overflow-y-auto pr-2">
           {messages.map((m, i) => (
             <div key={i} className={`flex ${m.from === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
@@ -350,6 +470,7 @@ function DemoBridge() {
                   : "bg-[#FBF3E9] border border-[#E4CDBF] text-slate-800"
               }`}>
                 <div className="whitespace-pre-wrap leading-relaxed" dangerouslySetInnerHTML={{ __html: renderInlineBold(m.text) }} />
+                {m.streaming && <span className="inline-block w-1.5 h-4 bg-[#B76E79] align-middle animate-pulse ml-0.5" />}
                 {m.actions?.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {m.actions.map((a, j) => (
@@ -369,18 +490,21 @@ function DemoBridge() {
         <div className="mt-4 flex gap-2">
           <input value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && ask(input)}
-            placeholder="Ask Bridge…"
-            className="flex-1 rounded-full border border-[#E4CDBF] px-4 py-2 text-sm outline-none focus:border-[#B76E79]"
+            disabled={streaming}
+            placeholder={streaming ? "Bridge is thinking…" : "Ask Bridge…"}
+            className="flex-1 rounded-full border border-[#E4CDBF] px-4 py-2 text-sm outline-none focus:border-[#B76E79] disabled:bg-slate-50"
             data-testid="demo-bridge-input" />
-          <button onClick={() => ask(input)}
-            className="rounded-full bg-[#4a2a5a] hover:bg-[#3a1e4a] text-white px-4 py-2 text-sm inline-flex items-center gap-1"
+          <button onClick={() => ask(input)} disabled={streaming || !input.trim()}
+            className="rounded-full bg-[#4a2a5a] hover:bg-[#3a1e4a] disabled:opacity-50 text-white px-4 py-2 text-sm inline-flex items-center gap-1"
             data-testid="demo-bridge-send">
             <Send className="w-4 h-4" /> Send
           </button>
         </div>
 
         <p className="mt-3 text-[10px] text-slate-500 italic">
-          Demo Bridge replies from Jordan Carter's fictional Blueprint. Production Bridge uses the participant's live data via GPT-5.6.
+          {useLive
+            ? "Live Bridge uses GPT-5.6 with Jordan Carter's fictional Blueprint, Vault, and progress as system context. It never reads real participant data."
+            : "Scripted answers below run entirely in your browser — instant, but not as flexible as the live model."}
         </p>
       </div>
     </>
@@ -620,6 +744,20 @@ function DemoAbout() {
  * ROOT
  * ============================================================ */
 export default function DemoApp() {
+  const nav = useNavigate();
+  const loc = useLocation();
+  const [tourOpen, setTourOpen] = useState(false);
+
+  // Auto-open the tour on FIRST visit to /demo (root only).
+  useEffect(() => {
+    if (loc.pathname === "/demo" && !hasSeenDemoTour()) {
+      const t = setTimeout(() => setTourOpen(true), 500);
+      return () => clearTimeout(t);
+    }
+  }, [loc.pathname]);
+
+  const startTour = () => { resetDemoTour(); nav("/demo"); setTourOpen(true); };
+
   return (
     <div className="min-h-screen"
       style={{
@@ -628,7 +766,7 @@ export default function DemoApp() {
           "radial-gradient(1000px 500px at 110% 10%, #EED2E0 0%, transparent 55%), " +
           "linear-gradient(180deg, #FBF7F2 0%, #F6EEE4 100%)",
       }}>
-      <DemoBanner />
+      <DemoBanner onStartTour={startTour} />
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 md:py-6">
         <DemoNav />
         <Routes>
@@ -642,6 +780,7 @@ export default function DemoApp() {
           <Route path="about"     element={<DemoAbout />} />
         </Routes>
       </div>
+      <GuidedTour open={tourOpen} onClose={() => setTourOpen(false)} navigateTo={(r) => nav(r)} />
     </div>
   );
 }
