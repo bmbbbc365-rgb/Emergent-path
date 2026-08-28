@@ -3061,6 +3061,11 @@ _resources_v2.register(
 )
 
 
+# ============= CANONICAL PARTICIPANT PROGRESS =============
+import progress_summary as _progress_summary  # noqa: E402
+_progress_summary.register(db, api_router, current_user)
+
+
 # ============= GRADUATION JOURNEY & BUILD MY BLUEPRINT™ DOORWAY =============
 import journey as _journey  # noqa: E402
 _journey.register(
