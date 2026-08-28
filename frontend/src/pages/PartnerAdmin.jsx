@@ -104,7 +104,11 @@ export default function PartnerAdmin() {
   );
 }
 
-function Metric({ label, value }) {\n  return <div className="rounded-2xl border border-[#E4CDBF] bg-white p-4"><div className="text-xs uppercase tracking-wider text-slate-500">{label}</div><div className="font-display text-3xl text-[#1B1033] mt-1">{value}</div></div>;\n}\n\nfunction Door({ icon: Icon, title, body, to, href, action }) {
+function Metric({ label, value }) {
+  return <div className="rounded-2xl border border-[#E4CDBF] bg-white p-4"><div className="text-xs uppercase tracking-wider text-slate-500">{label}</div><div className="font-display text-3xl text-[#1B1033] mt-1">{value}</div></div>;
+}
+
+function Door({ icon: Icon, title, body, to, href, action }) {
   const className = "rounded-2xl border border-[#E4CDBF] bg-white p-5 shadow-sm flex flex-col";
   const actionClass = "mt-auto pt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#4a2a5a]";
   return (
