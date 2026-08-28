@@ -364,7 +364,7 @@ crud_endpoints("support-circle", "support_contacts", ["name", "role", "category"
 # ---------- Requirements ----------
 crud_endpoints("requirements", "requirements",
     ["type", "description", "agency", "person", "start_date", "due_date", "recurrence", "status",
-     "amount_due", "amount_paid", "appointment_at", "notes", "reminder_days_before", "document_ids"], sort_field="due_date", sort_dir=1)
+     "amount_due", "amount_paid", "total_hours", "completed_hours", "service_location", "service_contact",\n     "appointment_at", "notes", "reminder_days_before", "document_ids"], sort_field="due_date", sort_dir=1)
 
 
 # ---------- Medications / Conditions / Appointments / Wellness ----------
