@@ -58,7 +58,7 @@ export default function Layout({ children }) {
         <button
           className="lg:hidden text-white/70 hover:text-white"
           onClick={() => setMobileOpen(false)}
-          data-testid="sidebar-close-btn"
+          data-testid="sidebar-close-btn" aria-label="Close navigation"
         ><X className="w-5 h-5" /></button>
       </div>
 
@@ -95,7 +95,7 @@ export default function Layout({ children }) {
           <button
             className="text-white/60 hover:text-white p-1.5"
             onClick={doLogout}
-            data-testid="logout-btn"
+            data-testid="logout-btn" aria-label="Sign out"
             title="Sign out"
           ><LogOut className="w-4 h-4" /></button>
         </div>
@@ -137,7 +137,7 @@ export default function Layout({ children }) {
               <button
                 className="lg:hidden p-2 -ml-2 rounded-md hover:bg-[#F3E1D8]"
                 onClick={() => setMobileOpen(true)}
-                data-testid="sidebar-open-btn"
+                data-testid="sidebar-open-btn" aria-label="Open navigation"
               ><Menu className="w-5 h-5" /></button>
               <div>
                 <div className="overline">A Path Forward</div>
