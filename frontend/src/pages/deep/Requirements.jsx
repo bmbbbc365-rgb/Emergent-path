@@ -22,7 +22,7 @@ const TYPES = [
   { v: "court_date", l: "Court date / hearing", icon: Gavel },
   { v: "restitution", l: "Restitution", icon: DollarSign },
   { v: "fees", l: "Fines / fees", icon: DollarSign },
-  { v: "curfew", l: "Curfew", icon: CalendarClock },
+  { v: "curfew", l: "Curfew", icon: CalendarClock },\n  { v: "travel_restriction", l: "Travel / location restriction", icon: Shield },\n  { v: "contact_restriction", l: "Contact / association restriction", icon: Shield },\n  { v: "condition", l: "Other supervision condition", icon: ClipboardList },
   { v: "residence", l: "Residence", icon: Shield },
   { v: "employment", l: "Employment requirement", icon: ClipboardList },
   { v: "other", l: "Other", icon: ClipboardList },
@@ -34,7 +34,7 @@ export default function Requirements() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ type: "check_in", description: "", agency: "", person: "", start_date: "", due_date: "", recurrence: "one-time",
-    status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", appointment_at: "", notes: "", reminder_days_before: 1 });
+    status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", testing_provider: "", testing_location: "", monitor_provider: "", device_model: "", current_charge: "", last_charged_at: "", curfew_time: "", curfew_days: "", restriction_details: "", appointment_at: "", notes: "", reminder_days_before: 1 });
 
   const load = async () => setItems((await api.get("/requirements")).data);
   useEffect(() => { load(); }, []);
@@ -46,7 +46,7 @@ export default function Requirements() {
     await api.post("/requirements", payload);
     toast.success("Requirement saved");
     setOpen(false); setF({ type: "check_in", description: "", agency: "", person: "", start_date: "", due_date: "", recurrence: "one-time",
-      status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", appointment_at: "", notes: "", reminder_days_before: 1 });
+      status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", testing_provider: "", testing_location: "", monitor_provider: "", device_model: "", current_charge: "", last_charged_at: "", curfew_time: "", curfew_days: "", restriction_details: "", appointment_at: "", notes: "", reminder_days_before: 1 });
     await load();
   };
   const updateStatus = async (id, status) => { await api.patch(`/requirements/${id}`, { status }); await load(); };
@@ -161,6 +161,29 @@ export default function Requirements() {
                   </div>
                 )}
                 <div><Label>Appointment</Label><Input type="datetime-local" value={f.appointment_at} onChange={(e) => setF({...f, appointment_at: e.target.value})} /></div>
+                {f.type === "drug_test" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Testing provider</Label><Input value={f.testing_provider} onChange={(e) => setF({...f, testing_provider: e.target.value})} /></div>
+                    <div><Label>Testing location</Label><Input value={f.testing_location} onChange={(e) => setF({...f, testing_location: e.target.value})} /></div>
+                  </div>
+                )}
+                {f.type === "ankle_monitor" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Monitor provider</Label><Input value={f.monitor_provider} onChange={(e) => setF({...f, monitor_provider: e.target.value})} /></div>
+                    <div><Label>Device / model</Label><Input value={f.device_model} onChange={(e) => setF({...f, device_model: e.target.value})} /></div>
+                    <div><Label>Current charge %</Label><Input type="number" min="0" max="100" value={f.current_charge} onChange={(e) => setF({...f, current_charge: e.target.value})} /></div>
+                    <div><Label>Last charged</Label><Input type="datetime-local" value={f.last_charged_at} onChange={(e) => setF({...f, last_charged_at: e.target.value})} /></div>
+                  </div>
+                )}
+                {f.type === "curfew" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Curfew time</Label><Input type="time" value={f.curfew_time} onChange={(e) => setF({...f, curfew_time: e.target.value})} /></div>
+                    <div><Label>Days / exceptions</Label><Input value={f.curfew_days} onChange={(e) => setF({...f, curfew_days: e.target.value})} /></div>
+                  </div>
+                )}
+                {["travel_restriction","contact_restriction","condition"].includes(f.type) && (
+                  <div><Label>Restriction / condition details</Label><Textarea value={f.restriction_details} onChange={(e) => setF({...f, restriction_details: e.target.value})} /></div>
+                )}
                 <div><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF({...f, notes: e.target.value})} /></div>
                 <DialogFooter><Button type="submit" className="rounded-full bg-[#1B1033] hover:bg-[#2A1848] text-white" data-testid="req-save-btn">Save</Button></DialogFooter>
               </form>
