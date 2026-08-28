@@ -246,7 +246,13 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
     ):
         """List participants + a compact journey snapshot for the admin table."""
         # Pull participants from enrollments so we scope to this program only.
-        enrollments = await db.enrollments.find({}, {"_id": 0}).to_list(2000)
+        if user.get("_effective_role") == "super_admin":
+            enrollment_query = {}
+        else:
+            program_ids = [b.get("program_id") for b in user.get("_bindings", [])
+                           if b.get("role") in ("program_admin", "program_staff") and b.get("program_id")]
+            enrollment_query = {"program_id": {"$in": program_ids}}
+        enrollments = await db.enrollments.find(enrollment_query, {"_id": 0}).to_list(2000)
         rows = []
         for en in enrollments:
             uid = en.get("participant_user_id")
@@ -280,6 +286,8 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
         u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "name": 1, "email": 1})
         if not u:
             raise HTTPException(404, "Participant not found")
+        if not await _staff_can_access_participant(user, user_id):
+            raise HTTPException(404, "Participant not found")
         snap = await _hydrate(user_id)
         return {"participant": {"user_id": user_id, **u}, **snap}
 
@@ -290,6 +298,8 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
     ):
         u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1})
         if not u:
+            raise HTTPException(404, "Participant not found")
+        if not await _staff_can_access_participant(user, user_id):
             raise HTTPException(404, "Participant not found")
         state = await _get_or_init(user_id)
         if state.get("graduation_approved"):
@@ -322,6 +332,8 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
         user_id: str,
         user: dict = Depends(require_role(*_ADMIN_ROLES)),
     ):
+        if not await _staff_can_access_participant(user, user_id):
+            raise HTTPException(404, "Participant not found")
         state = await _get_or_init(user_id)
         if not state.get("graduation_approved"):
             raise HTTPException(400, "Participant is not graduated")
@@ -355,6 +367,8 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
         u = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1})
         if not u:
             raise HTTPException(404, "Participant not found")
+        if not await _staff_can_access_participant(user, user_id):
+            raise HTTPException(404, "Participant not found")
         await _get_or_init(user_id)
         entry = {
             "id": new_id("mst_"),
@@ -384,6 +398,8 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
         user_id: str, milestone_id: str,
         user: dict = Depends(require_role(*_ADMIN_ROLES)),
     ):
+        if not await _staff_can_access_participant(user, user_id):
+            raise HTTPException(404, "Participant not found")
         res = await db.journey_state.update_one(
             {"participant_user_id": user_id},
             {"$pull": {"milestones": {"id": milestone_id}},
