@@ -94,20 +94,30 @@ export default function BlueprintSection() {
   };
 
   const uploadFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setUploading(true);
+    const uploaded = [];
+    const failed = [];
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const { data } = await api.post("/documents/upload", form, {
-        params: { section: key, label: file.name },
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      setDocuments((prev) => [data, ...prev]);
-      toast.success("Document uploaded — private to you");
-    } catch (err) {
-      toast.error("Upload failed");
+      for (const file of files) {
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const { data } = await api.post("/documents/upload", form, {
+            params: { section: key, label: file.name },
+            headers: { "Content-Type": "multipart/form-data" },
+          });
+          uploaded.push(data);
+        } catch (err) {
+          failed.push({ name: file.name, reason: err?.response?.data?.detail || "Upload failed" });
+        }
+      }
+      if (uploaded.length) {
+        setDocuments((prev) => [...uploaded.reverse(), ...prev]);
+        toast.success(`${uploaded.length} document${uploaded.length === 1 ? "" : "s"} uploaded — private to you`);
+      }
+      if (failed.length) toast.error(`${failed.length} file${failed.length === 1 ? "" : "s"} could not be uploaded`);
     } finally { setUploading(false); e.target.value = ""; }
   };
 
@@ -229,8 +239,8 @@ export default function BlueprintSection() {
               <Upload className="w-4 h-4" /> Scan a document
             </Button>
             <label className="rounded-full bg-[#B76E79] hover:bg-[#8E4E5A] text-[#1B1033] font-medium px-5 py-2 inline-flex items-center gap-2 cursor-pointer" data-testid="upload-doc-btn">
-              <Upload className="w-4 h-4" /> {uploading ? "Uploading…" : "Upload only"}
-              <input type="file" hidden onChange={uploadFile} data-testid="upload-input" />
+              <Upload className="w-4 h-4" /> {uploading ? "Uploading…" : "Upload files"}
+              <input type="file" hidden multiple accept="application/pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={uploadFile} data-testid="upload-input" />
             </label>
           </div>
         }
