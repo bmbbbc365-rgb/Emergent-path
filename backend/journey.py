@@ -31,6 +31,7 @@ require_role = None
 now_iso = None
 new_id = None
 _audit = None
+_staff_can_access_participant = None
 
 
 # =============================================================================
@@ -151,8 +152,8 @@ async def _hydrate(user_id: str) -> dict:
 # =============================================================================
 #  REGISTER
 # =============================================================================
-def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, _audit_fn):
-    global db, api_router, current_user, require_role, now_iso, new_id, _audit
+def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, _audit_fn, _scope_check):
+    global db, api_router, current_user, require_role, now_iso, new_id, _audit, _staff_can_access_participant
     db = _db
     api_router = _api_router
     current_user = _current_user
@@ -160,6 +161,7 @@ def register(_db, _api_router, _current_user, _require_role, _now_iso, _new_id, 
     now_iso = _now_iso
     new_id = _new_id
     _audit = _audit_fn
+    _staff_can_access_participant = _scope_check
 
     # ---------- Participant endpoints ----------
     @api_router.get("/journey/state")
