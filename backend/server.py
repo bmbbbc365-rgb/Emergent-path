@@ -537,7 +537,16 @@ async def list_documents(section: Optional[str] = None, category: Optional[str] 
     q = {"user_id": user["user_id"], "is_deleted": False}
     if section: q["section"] = section
     if category: q["category"] = category
-    return await db.documents.find(q, {"_id": 0}).sort("uploaded_at", -1).to_list(1000)
+    rows = await db.documents.find(q, {"_id": 0}).sort("uploaded_at", -1).to_list(1000)
+    # Preserve legacy records in storage, but do not expose known zero-byte
+    # signed-URL test artifacts in the participant Vault.
+    return [
+        row for row in rows
+        if not (
+            int(row.get("size") or 0) == 0
+            and str(row.get("label") or "").strip().lower() == "signed-url-test"
+        )
+    ]
 
 
 @api_router.post("/documents/upload")
@@ -549,14 +558,26 @@ async def upload_document(
     user: dict = Depends(current_user),
 ):
     data = await file.read()
+    content_type = (file.content_type or "application/octet-stream").lower()
+    allowed_types = {
+        "application/pdf", "image/jpeg", "image/png", "image/webp",
+        "image/heic", "image/heif",
+    }
+    max_bytes = 25 * 1024 * 1024
+    if not data:
+        raise HTTPException(400, "The selected file is empty")
+    if len(data) > max_bytes:
+        raise HTTPException(413, "File is larger than the 25 MB limit")
+    if content_type not in allowed_types:
+        raise HTTPException(415, "Upload a PDF or supported image file")
     ext = (file.filename or "file").split(".")[-1].lower() if "." in (file.filename or "") else "bin"
     path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4().hex}.{ext}"
-    result = put_object(path, data, file.content_type or "application/octet-stream")
+    result = put_object(path, data, content_type)
     doc = {
         "id": new_id("doc_"), "user_id": user["user_id"],
         "section": section, "category": category,
         "label": label or file.filename, "storage_path": result["path"],
-        "original_filename": file.filename, "content_type": file.content_type or "application/octet-stream",
+        "original_filename": file.filename, "content_type": content_type,
         "size": result.get("size", len(data)), "is_deleted": False, "uploaded_at": now_iso(),
     }
     await db.documents.insert_one(doc); doc.pop("_id", None); return doc
