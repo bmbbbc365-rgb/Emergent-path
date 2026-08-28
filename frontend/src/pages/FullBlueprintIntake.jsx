@@ -22,7 +22,8 @@ export default function FullBlueprintIntake() {
   const [answers, setAnswers] = useState({});
   const [progress, setProgress] = useState({ pct: 0, current_section: null, completed_at: null });
   const [sectionIdx, setSectionIdx] = useState(0);
-  const [summary, setSummary] = useState(null);\n  const [error, setError] = useState("");
+  const [summary, setSummary] = useState(null);
+  const [error, setError] = useState("");
 
   const loadBlueprint = async () => {
     setError("");
@@ -73,7 +74,8 @@ export default function FullBlueprintIntake() {
   };
 
   if (summary) return <SummaryView summary={summary} onReturn={() => nav("/app/blueprint")} />;
-  if (error) return <div className="max-w-xl mx-auto bmb-card p-8"><h1 className="font-display text-2xl text-[#1B1033]">We could not load your Blueprint.</h1><p className="text-slate-600 mt-2">{error}</p><Button className="mt-5 bg-[#4a2a5a] hover:bg-[#3a1e4a]" onClick={loadBlueprint}>Try again</Button></div>;\n  if (!section) return <div className="p-8 text-slate-500">Loading your Blueprint…</div>;
+  if (error) return <div className="max-w-xl mx-auto bmb-card p-8"><h1 className="font-display text-2xl text-[#1B1033]">We could not load your Blueprint.</h1><p className="text-slate-600 mt-2">{error}</p><Button className="mt-5 bg-[#4a2a5a] hover:bg-[#3a1e4a]" onClick={loadBlueprint}>Try again</Button></div>;
+  if (!section) return <div className="p-8 text-slate-500">Loading your Blueprint…</div>;
 
   return (
     <div className="max-w-2xl mx-auto p-4 md:p-6" data-testid="full-blueprint-intake">
