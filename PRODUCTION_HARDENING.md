@@ -37,39 +37,39 @@ This checkpoint preserves working production functionality and sequences only ve
 - [ ] Add participant-approved BBC handoff token design; do not transmit data until separately approved
 
 ### Participant journey
-- [ ] Reconcile progress calculations across Dashboard, Living Blueprint, Journey, requirements, and Bridge
+- [x] Add canonical progress service and connect Journey; Dashboard/Bridge adoption remains
 - [ ] Verify first-login release/personal Blueprint choice
 - [ ] Verify save/exit/resume and completion transitions
 - [ ] Verify every doorway and empty state
 
 ### Vault hardening
-- [ ] Remove or hide zero-byte/test artifacts from participant views without deleting real files
-- [ ] Batch upload and unrecognized review queue
+- [x] Hide known zero-byte signed-URL fixtures without deleting stored records
+- [x] Add validated multi-file section uploads\n- [ ] Complete unrecognized review queue
 - [ ] Confidence correction and audit history
 - [ ] Expiration-derived reminder proposals
 - [ ] Mobile camera and multi-file QA
-- [ ] Storage failure, retry, file-size, MIME, and malware-safety handling
+- [x] Reject empty, unsupported, and over-25MB uploads\n- [ ] Add malware-safety scanning and storage retry telemetry
 
 ### Arkansas supervision and release
 - [ ] Officer summary and reporting schedule
 - [ ] Drug/alcohol testing schedule and reminders
 - [ ] Electronic-monitor provider, instructions, charge logs, and user-defined reminders
-- [ ] Curfew, travel/location, and association restrictions
+- [x] Add structured curfew, travel/location, and association restriction record fields
 - [ ] Conditions checklist with evidence and verification
-- [ ] Hours-based community service; never treat hours as currency
+- [x] Use hours-based community service and exclude it from currency totals
 - [ ] Reconcile restitution/fines/fees aggregates with Bridge
 
 ### Staff participation
 - [ ] Preserve staff exclusion from journals, private health details, Support Circle, and unrelated documents
-- [ ] Assigned-caseload participation summary
+- [x] Add program-scoped assigned-caseload participation summary
 - [ ] Evidence-return reasons and participant Fix It doorway
 - [ ] Milestone templates and staff recognition
-- [ ] Role, organization, program, and assignment authorization regression tests
+- [x] Scope journey administration queries and participant operations by authorized program\n- [ ] Add automated authorization regression tests
 
 ### Mobile and stabilization
-- [ ] 320/375/390/768/1024 responsive passes
-- [ ] Keyboard, screen-reader, focus, contrast, and reduced-motion QA
-- [ ] Loading timeout, retry, and error states
+- [ ] 320/375/390/768/1024 responsive passes\n- [x] Close mobile navigation automatically after route changes
+- [ ] Keyboard, screen-reader, focus, contrast, and reduced-motion QA\n- [x] Add accessible names to mobile navigation/session controls
+- [x] Add recoverable Full Blueprint loading failure and retry state\n- [ ] Complete loading/error states across remaining routes
 - [ ] Cross-surface totals and progress regression tests
 - [ ] Production logs, rate limits, storage, CORS, auth cookies, and deployment smoke test
 
