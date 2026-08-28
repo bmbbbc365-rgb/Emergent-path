@@ -38,6 +38,7 @@ import FindHelp from "@/pages/FindHelp";
 import Journey from "@/pages/Journey";
 import AdminJourney from "@/pages/AdminJourney";
 import CategoryHub from "@/pages/CategoryHub";
+import PartnerAdmin from "@/pages/PartnerAdmin";
 import DemoApp from "@/pages/demo/DemoApp";
 
 const DEEP = {
@@ -90,6 +91,7 @@ function AppRouter() {
       <Route path="/app/find-help" element={<Protected><FindHelp /></Protected>} />
       <Route path="/app/journey" element={<Protected><Journey /></Protected>} />
       <Route path="/staff/journey" element={<Protected><AdminJourney /></Protected>} />
+      <Route path="/partner-admin" element={<Protected><PartnerAdmin /></Protected>} />
       <Route path="/app/emergency" element={<Protected><EmergencySettings /></Protected>} />
       <Route path="/app/transportation" element={<Protected><TransportationDeep /></Protected>} />
       <Route path="/staff/caseload" element={<Protected><StaffCaseload /></Protected>} />
