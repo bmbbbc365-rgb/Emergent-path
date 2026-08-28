@@ -53,9 +53,9 @@ This checkpoint preserves working production functionality and sequences only ve
 - [ ] Add malware-safety scanning and storage retry telemetry
 
 ### Arkansas supervision and release
-- [ ] Officer summary and reporting schedule
-- [ ] Drug/alcohol testing schedule and reminders
-- [ ] Electronic-monitor provider, instructions, charge logs, and user-defined reminders
+- [x] Officer summary and reporting schedule
+- [x] Drug/alcohol testing schedule and reminders
+- [x] Electronic-monitor provider, instructions, charge logs, and user-defined reminders
 - [x] Add structured curfew, travel/location, and association restriction record fields
 - [ ] Conditions checklist with evidence and verification
 - [x] Use hours-based community service and exclude it from currency totals

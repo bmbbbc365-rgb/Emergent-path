@@ -366,7 +366,8 @@ crud_endpoints("requirements", "requirements",
     ["type", "description", "agency", "person", "start_date", "due_date", "recurrence", "status",
      "amount_due", "amount_paid", "total_hours", "completed_hours", "service_location", "service_contact",
      "testing_provider", "testing_location", "monitor_provider", "device_model", "current_charge",
-     "last_charged_at", "curfew_time", "curfew_days", "restriction_details",
+     "last_charged_at", "monitor_instructions", "monitor_fee", "officer_phone", "officer_email",
+     "reporting_method", "reporting_instructions", "curfew_time", "curfew_days", "restriction_details",
      "appointment_at", "notes", "reminder_days_before", "document_ids"], sort_field="due_date", sort_dir=1)
 
 

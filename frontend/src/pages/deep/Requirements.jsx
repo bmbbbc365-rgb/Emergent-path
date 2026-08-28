@@ -16,6 +16,7 @@ const TYPES = [
   { v: "supervision_officer", l: "Supervision officer (contact)", icon: User2 },
   { v: "check_in", l: "Check-in", icon: CalendarClock },
   { v: "drug_test", l: "Drug testing", icon: ClipboardList },
+  { v: "alcohol_test", l: "Alcohol testing", icon: ClipboardList },
   { v: "ankle_monitor", l: "Ankle monitor", icon: Shield },
   { v: "class", l: "Required class/program", icon: ClipboardList },
   { v: "community_service", l: "Community service", icon: ClipboardList },
@@ -38,7 +39,7 @@ export default function Requirements() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ type: "check_in", description: "", agency: "", person: "", start_date: "", due_date: "", recurrence: "one-time",
-    status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", testing_provider: "", testing_location: "", monitor_provider: "", device_model: "", current_charge: "", last_charged_at: "", curfew_time: "", curfew_days: "", restriction_details: "", appointment_at: "", notes: "", reminder_days_before: 1 });
+    status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", testing_provider: "", testing_location: "", monitor_provider: "", device_model: "", current_charge: "", last_charged_at: "", monitor_instructions: "", monitor_fee: "", officer_phone: "", officer_email: "", reporting_method: "", reporting_instructions: "", curfew_time: "", curfew_days: "", restriction_details: "", appointment_at: "", notes: "", reminder_days_before: 1 });
 
   const load = async () => setItems((await api.get("/requirements")).data);
   useEffect(() => { load(); }, []);
@@ -52,7 +53,7 @@ export default function Requirements() {
     await api.post("/requirements", payload);
     toast.success("Requirement saved");
     setOpen(false); setF({ type: "check_in", description: "", agency: "", person: "", start_date: "", due_date: "", recurrence: "one-time",
-      status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", testing_provider: "", testing_location: "", monitor_provider: "", device_model: "", current_charge: "", last_charged_at: "", curfew_time: "", curfew_days: "", restriction_details: "", appointment_at: "", notes: "", reminder_days_before: 1 });
+      status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", testing_provider: "", testing_location: "", monitor_provider: "", device_model: "", current_charge: "", last_charged_at: "", monitor_instructions: "", monitor_fee: "", officer_phone: "", officer_email: "", reporting_method: "", reporting_instructions: "", curfew_time: "", curfew_days: "", restriction_details: "", appointment_at: "", notes: "", reminder_days_before: 1 });
     await load();
   };
   const updateStatus = async (id, status) => { await api.patch(`/requirements/${id}`, { status }); await load(); };
@@ -166,8 +167,19 @@ export default function Requirements() {
                     <div><Label>Service contact</Label><Input value={f.service_contact} onChange={(e) => setF({...f, service_contact: e.target.value})} /></div>
                   </div>
                 )}
-                <div><Label>Appointment</Label><Input type="datetime-local" value={f.appointment_at} onChange={(e) => setF({...f, appointment_at: e.target.value})} /></div>
-                {f.type === "drug_test" && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label>Appointment / next report</Label><Input type="datetime-local" value={f.appointment_at} onChange={(e) => setF({...f, appointment_at: e.target.value})} /></div>
+                  <div><Label>Remind me days before</Label><Input type="number" min="0" max="90" value={f.reminder_days_before} onChange={(e) => setF({...f, reminder_days_before: Number(e.target.value)})} /></div>
+                </div>
+                {f.type === "supervision_officer" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Officer phone</Label><Input type="tel" value={f.officer_phone} onChange={(e) => setF({...f, officer_phone: e.target.value})} /></div>
+                    <div><Label>Officer email</Label><Input type="email" value={f.officer_email} onChange={(e) => setF({...f, officer_email: e.target.value})} /></div>
+                    <div><Label>Reporting method</Label><Input value={f.reporting_method} onChange={(e) => setF({...f, reporting_method: e.target.value})} placeholder="Phone, app, office, kiosk" /></div>
+                    <div><Label>Reporting instructions</Label><Input value={f.reporting_instructions} onChange={(e) => setF({...f, reporting_instructions: e.target.value})} /></div>
+                  </div>
+                )}
+                {["drug_test", "alcohol_test"].includes(f.type) && (
                   <div className="grid grid-cols-2 gap-3">
                     <div><Label>Testing provider</Label><Input value={f.testing_provider} onChange={(e) => setF({...f, testing_provider: e.target.value})} /></div>
                     <div><Label>Testing location</Label><Input value={f.testing_location} onChange={(e) => setF({...f, testing_location: e.target.value})} /></div>
@@ -179,6 +191,8 @@ export default function Requirements() {
                     <div><Label>Device / model</Label><Input value={f.device_model} onChange={(e) => setF({...f, device_model: e.target.value})} /></div>
                     <div><Label>Current charge %</Label><Input type="number" min="0" max="100" value={f.current_charge} onChange={(e) => setF({...f, current_charge: e.target.value})} /></div>
                     <div><Label>Last charged</Label><Input type="datetime-local" value={f.last_charged_at} onChange={(e) => setF({...f, last_charged_at: e.target.value})} /></div>
+                    <div><Label>Provider instructions</Label><Input value={f.monitor_instructions} onChange={(e) => setF({...f, monitor_instructions: e.target.value})} /></div>
+                    <div><Label>Fee / charge details</Label><Input value={f.monitor_fee} onChange={(e) => setF({...f, monitor_fee: e.target.value})} /></div>
                   </div>
                 )}
                 {f.type === "curfew" && (
@@ -225,6 +239,11 @@ export default function Requirements() {
                           {FINANCIAL_TYPES.has(r.type) && (r.amount_due || 0) > 0 && <div className="col-span-2">Paid: ${Number(r.amount_paid || 0).toFixed(2)} of ${Number(r.amount_due).toFixed(2)} (balance ${bal.toFixed(2)})</div>}
                           {r.type === "community_service" && <div className="col-span-2">Hours: {Number(r.completed_hours || 0).toFixed(1)} of {Number(r.total_hours || 0).toFixed(1)} completed ({Math.max(0, Number(r.total_hours || 0) - Number(r.completed_hours || 0)).toFixed(1)} remaining)</div>}
                           {r.appointment_at && <div className="col-span-2">Appointment: {r.appointment_at.replace("T", " ")}</div>}
+                          {r.officer_phone && <div>Officer phone: {r.officer_phone}</div>}
+                          {r.officer_email && <div>Officer email: {r.officer_email}</div>}
+                          {r.reporting_method && <div className="col-span-2">Reporting: {r.reporting_method}{r.reporting_instructions ? ` · ${r.reporting_instructions}` : ""}</div>}
+                          {r.testing_provider && <div className="col-span-2">Testing: {r.testing_provider}{r.testing_location ? ` · ${r.testing_location}` : ""}</div>}
+                          {r.monitor_provider && <div className="col-span-2">Monitor: {r.monitor_provider}{r.monitor_fee ? ` · ${r.monitor_fee}` : ""}</div>}
                         </div>
                         {r.notes && <div className="mt-2 text-xs text-slate-500 italic">"{r.notes}"</div>}
                         <div className="mt-4 flex items-center gap-2">
