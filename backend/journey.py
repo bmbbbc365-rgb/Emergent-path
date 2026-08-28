@@ -97,65 +97,24 @@ async def _get_or_init(user_id: str) -> dict:
 
 
 async def _readiness_signals(user_id: str) -> dict:
-    """Compute progress evidence used to help administrators judge graduation.
-
-    Reads live from existing collections — never mutates. Every field is a
-    hint, not an auto-decision. Missing collections default to zero.
-    """
-    signals = {
-        "blueprint_completed": False,
-        "blueprint_pct": 0,
-        "assessments_completed": 0,
-        "assessments_total": 4,
-        "ereadiness_pct": 0,
-        "ereadiness_completed": 0,
-        "ereadiness_total": 0,
-        "action_items_completed": 0,
-        "action_items_total": 0,
+    """Read journey evidence from the canonical progress service."""
+    from progress_summary import compute_progress_summary
+    summary = await compute_progress_summary(user_id)
+    return {
+        "blueprint_completed": summary["overall"]["total"] > 0 and summary["overall"]["percent"] == 100,
+        "blueprint_pct": summary["overall"]["percent"],
+        "assessments_completed": summary["assessments"]["completed"],
+        "assessments_total": summary["assessments"]["total"],
+        "ereadiness_pct": summary["categories"]["employment_income"]["percent"],
+        "ereadiness_completed": summary["categories"]["employment_income"]["completed"],
+        "ereadiness_total": summary["categories"]["employment_income"]["total"],
+        "action_items_completed": summary["action_map"]["completed"],
+        "action_items_total": summary["action_map"]["total"],
+        "requirements_completed": summary["requirements"]["completed"],
+        "requirements_total": summary["requirements"]["total"],
+        "documents_total": summary["documents"]["total"],
+        "documents_needs_review": summary["documents"]["needs_review"],
     }
-    try:
-        bp = await db.blueprint_full_progress.find_one(
-            {"participant_user_id": user_id}, {"_id": 0}
-        )
-        if bp:
-            signals["blueprint_pct"] = int(bp.get("pct") or 0)
-            signals["blueprint_completed"] = bool(bp.get("completed_at"))
-    except Exception:
-        pass
-    try:
-        n = await db.assessment_results.count_documents(
-            {"participant_user_id": user_id, "completed_at": {"$ne": None}}
-        )
-        signals["assessments_completed"] = int(n or 0)
-    except Exception:
-        pass
-    try:
-        rows = await db.ereadiness_progress.find(
-            {"participant_user_id": user_id}, {"_id": 0, "item_key": 1, "state": 1}
-        ).to_list(200)
-        # Not all rows may carry a state; treat "completed" = truthy state
-        completed = sum(1 for r in rows if (r.get("state") == "completed"))
-        # Total: from ereadiness catalog if reachable, else fall back to row count
-        try:
-            from blueprint_v2 import EREADINESS_CATALOG  # type: ignore
-            total = len(EREADINESS_CATALOG)
-        except Exception:
-            total = max(len(rows), completed)
-        signals["ereadiness_completed"] = completed
-        signals["ereadiness_total"] = total
-        signals["ereadiness_pct"] = round(completed / max(1, total) * 100)
-    except Exception:
-        pass
-    try:
-        total = await db.action_map_items.count_documents({"user_id": user_id})
-        done = await db.action_map_items.count_documents(
-            {"user_id": user_id, "status": "completed"}
-        )
-        signals["action_items_total"] = int(total or 0)
-        signals["action_items_completed"] = int(done or 0)
-    except Exception:
-        pass
-    return signals
 
 
 def _derive_stage(state: dict, signals: dict) -> str:
