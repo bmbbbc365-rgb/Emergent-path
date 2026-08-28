@@ -1502,12 +1502,14 @@ async def dashboard_summary(user: dict = Depends(current_user)):
         {"_id": 0},
     ).sort("due_date", 1).limit(6).to_list(6)
 
-    docs_count = await db.documents.count_documents({"user_id": uid, "is_deleted": False})
+    doc_rows = await db.documents.find({"user_id": uid, "is_deleted": False}, {"_id": 0, "size": 1, "label": 1}).to_list(2000)
+    docs_count = sum(1 for d in doc_rows if not (int(d.get("size") or 0) == 0 and str(d.get("label") or "").strip().lower() == "signed-url-test"))
 
     # Requirements snapshot
     reqs = await db.requirements.find({"user_id": uid}, {"_id": 0}).to_list(500)
-    req_paid = sum((r.get("amount_paid") or 0) for r in reqs)
-    req_owed = sum(max(0, (r.get("amount_due") or 0) - (r.get("amount_paid") or 0)) for r in reqs)
+    financial_reqs = [r for r in reqs if r.get("type") in ("restitution", "fees")]
+    req_paid = sum(min((r.get("amount_paid") or 0), (r.get("amount_due") or 0)) for r in financial_reqs)
+    req_owed = sum(max(0, (r.get("amount_due") or 0) - (r.get("amount_paid") or 0)) for r in financial_reqs)
     req_next = sorted([r for r in reqs if r.get("due_date")], key=lambda r: r["due_date"])[:5]
 
     # Appointments soon
@@ -1536,7 +1538,11 @@ async def dashboard_summary(user: dict = Depends(current_user)):
         done = await db.tasks.count_documents({"user_id": uid, "section": section, "status": "done"})
         section_progress[section] = {"total": total, "done": done, "pct": round((done / total) * 100) if total else 0}
 
+    from progress_summary import compute_progress_summary
+    canonical_progress = await compute_progress_summary(uid)
+
     return {
+        "progress": canonical_progress,
         "tasks": {"total": total_tasks, "done": done_tasks, "pct": round(done_tasks / total_tasks * 100) if total_tasks else 0},
         "required": {"total": required_total, "open": required_open, "done": required_total - required_open,
                      "pct": round((required_total - required_open) / required_total * 100) if required_total else 0},
@@ -1583,7 +1589,8 @@ async def build_bridge_context(user: dict) -> str:
     s = await dashboard_summary(user)
     lines = [
         f"Participant: {user.get('name', 'the participant')} · Email: {user.get('email')}",
-        f"Overall required tasks: {s['required']['done']}/{s['required']['total']} complete.",
+        f"Overall Blueprint progress: {s['progress']['overall']['completed']}/{s['progress']['overall']['total']} complete ({s['progress']['overall']['percent']}%).",
+        f"Release requirements: {s['progress']['requirements']['completed']}/{s['progress']['requirements']['total']} complete.",
         f"Documents saved: {s['documents_count']}. Active benefits on file: {s['benefits']['active']}. "
         f"Medications: {s['health']['medications']}. Conditions: {s['health']['conditions']}. "
         f"Active jobs: {s['employment']['active_jobs']}. Open applications: {s['employment']['open_applications']}.",
