@@ -44,11 +44,13 @@ This checkpoint preserves working production functionality and sequences only ve
 
 ### Vault hardening
 - [x] Hide known zero-byte signed-URL fixtures without deleting stored records
-- [x] Add validated multi-file section uploads\n- [ ] Complete unrecognized review queue
+- [x] Add validated multi-file section uploads
+- [ ] Complete unrecognized review queue
 - [ ] Confidence correction and audit history
 - [ ] Expiration-derived reminder proposals
 - [ ] Mobile camera and multi-file QA
-- [x] Reject empty, unsupported, and over-25MB uploads\n- [ ] Add malware-safety scanning and storage retry telemetry
+- [x] Reject empty, unsupported, and over-25MB uploads
+- [ ] Add malware-safety scanning and storage retry telemetry
 
 ### Arkansas supervision and release
 - [ ] Officer summary and reporting schedule
@@ -64,12 +66,16 @@ This checkpoint preserves working production functionality and sequences only ve
 - [x] Add program-scoped assigned-caseload participation summary
 - [ ] Evidence-return reasons and participant Fix It doorway
 - [ ] Milestone templates and staff recognition
-- [x] Scope journey administration queries and participant operations by authorized program\n- [ ] Add automated authorization regression tests
+- [x] Scope journey administration queries and participant operations by authorized program
+- [ ] Add automated authorization regression tests
 
 ### Mobile and stabilization
-- [ ] 320/375/390/768/1024 responsive passes\n- [x] Close mobile navigation automatically after route changes
-- [ ] Keyboard, screen-reader, focus, contrast, and reduced-motion QA\n- [x] Add accessible names to mobile navigation/session controls
-- [x] Add recoverable Full Blueprint loading failure and retry state\n- [ ] Complete loading/error states across remaining routes
+- [ ] 320/375/390/768/1024 responsive passes
+- [x] Close mobile navigation automatically after route changes
+- [ ] Keyboard, screen-reader, focus, contrast, and reduced-motion QA
+- [x] Add accessible names to mobile navigation/session controls
+- [x] Add recoverable Full Blueprint loading failure and retry state
+- [ ] Complete loading/error states across remaining routes
 - [ ] Cross-surface totals and progress regression tests
 - [ ] Production logs, rate limits, storage, CORS, auth cookies, and deployment smoke test
 
