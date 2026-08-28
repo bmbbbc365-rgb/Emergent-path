@@ -71,8 +71,8 @@ export default function Layout({ children }) {
         <div className="pt-3 mt-3 border-t border-white/10 space-y-1">
           <NavItem to="/app/library" icon={Library} label="Learn & Resources" testId="nav-library" />
           <NavItem to="/app/privacy" icon={Lock} label="Privacy & Sharing" testId="nav-privacy" />
-          {(user?.memberships || []).some((m) => ["super_admin", "program_admin", "program_staff"].includes(m?.role)) && (
-            <NavItem to="/staff/journey" icon={Users} label="Staff · Journey" testId="nav-admin-journey" />
+          {(user?.memberships || []).some((m) => ["super_admin", "program_admin", "program_staff", "case_manager", "reviewer"].includes(m?.role)) && (
+            <NavItem to="/partner-admin" icon={Users} label="Partner Administration" testId="nav-partner-admin" />
           )}
         </div>
       </nav>
