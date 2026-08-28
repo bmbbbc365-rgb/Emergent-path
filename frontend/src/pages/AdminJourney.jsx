@@ -23,6 +23,17 @@ const STAGE_BADGE = {
   expand:   { label: "05 Expand",   bg: "bg-[#CDE5EE]",  text: "text-[#1B4A5A]" },
 };
 
+const MILESTONE_TEMPLATES = [
+  { key: "release_requirements_organized", label: "Release requirements organized" },
+  { key: "identity_documents_secured", label: "Identity documents secured" },
+  { key: "stable_housing", label: "Stable housing established" },
+  { key: "employment_secured", label: "Employment secured" },
+  { key: "education_enrolled", label: "Education or training enrolled" },
+  { key: "recovery_support_connected", label: "Recovery support connected" },
+  { key: "benefits_activated", label: "Benefits activated" },
+  { key: "program_completion", label: "Program completion recognized" },
+];
+
 export default function AdminJourney() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState("");
@@ -324,6 +335,17 @@ function AdminDetail({ row, onClose, onChanged }) {
           <DialogContent className="max-w-md">
             <DialogHeader><DialogTitle>Add milestone</DialogTitle></DialogHeader>
             <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Recognition template</Label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {MILESTONE_TEMPLATES.map((template) => (
+                    <button key={template.key} type="button" onClick={() => { setMKey(template.key); setMLabel(template.label); }}
+                      className="rounded-full border border-[#D9C5B8] px-2.5 py-1 text-[11px] text-[#4a2a5a] hover:bg-[#FBF3E9]">
+                      {template.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <Label className="text-xs">Label</Label>
                 <Input value={mLabel} onChange={(e) => setMLabel(e.target.value)}
