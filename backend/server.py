@@ -3073,7 +3073,7 @@ _progress_summary.register(db, api_router, current_user)
 import journey as _journey  # noqa: E402
 _journey.register(
     db, api_router, current_user, require_role,
-    now_iso, new_id, _audit,
+    now_iso, new_id, _audit, _staff_can_access_participant,
 )
 
 
