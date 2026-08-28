@@ -31,9 +31,9 @@ This checkpoint preserves working production functionality and sequences only ve
 - [x] Add protected `/partner-admin` doorway
 - [x] Link authorized staff to caseload and journey recognition
 - [x] State BBC separation, participant choice, and no automatic transfer/enrollment/payment
-- [ ] Add program configuration and invitation management UI
-- [ ] Add scoped participation summary
-- [ ] Add audit-event viewer
+- [x] Add program configuration and invitation management UI
+- [x] Add scoped participation summary
+- [x] Add audit-event viewer
 - [ ] Add participant-approved BBC handoff token design; do not transmit data until separately approved
 
 ### Participant journey
