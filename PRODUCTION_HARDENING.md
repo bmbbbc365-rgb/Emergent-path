@@ -64,10 +64,10 @@ This checkpoint preserves working production functionality and sequences only ve
 ### Staff participation
 - [ ] Preserve staff exclusion from journals, private health details, Support Circle, and unrelated documents
 - [x] Add program-scoped assigned-caseload participation summary
-- [ ] Evidence-return reasons and participant Fix It doorway
+- [x] Evidence-return reasons and participant Fix It doorway
 - [ ] Milestone templates and staff recognition
 - [x] Scope journey administration queries and participant operations by authorized program
-- [ ] Add automated authorization regression tests
+- [x] Add automated authorization regression tests
 
 ### Mobile and stabilization
 - [ ] 320/375/390/768/1024 responsive passes

@@ -2837,6 +2837,8 @@ async def staff_verify_requirement(req_id: str, body: VerifyIn,
                                     user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
     if body.decision not in {"verified", "returned", "needs_review", "not_applicable"}:
         raise HTTPException(400, "Invalid decision")
+    if body.decision == "returned" and not (body.reason or "").strip():
+        raise HTTPException(400, "A clear return reason is required")
     req = await db.requirements.find_one({"id": req_id}, {"_id": 0})
     if not req: raise HTTPException(404, "Not found")
     if not await _staff_can_access_participant(user, req["user_id"]):
@@ -2844,7 +2846,7 @@ async def staff_verify_requirement(req_id: str, body: VerifyIn,
     before = req.get("verification") or {}
     ver = {**before, "status": body.decision, "verified_by": user["user_id"],
            "verifier_role": user["_effective_role"], "verified_at": now_iso(),
-           "return_reason": body.reason if body.decision == "returned" else before.get("return_reason")}
+           "return_reason": body.reason.strip() if body.decision == "returned" else before.get("return_reason")}
     upd = {"verification": ver}
     if body.decision == "verified":
         upd["status"] = "done"

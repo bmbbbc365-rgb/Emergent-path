@@ -4,7 +4,7 @@ import api from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Paperclip, Camera, FolderOpen, X, FileText } from "lucide-react";
+import { AlertCircle, Paperclip, Camera, FolderOpen, X, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 /**
@@ -21,6 +21,8 @@ export default function RequirementEvidence({ requirement, onChanged }) {
   const [chooseOpen, setChooseOpen] = useState(false);
   const [available, setAvailable] = useState([]);
   const [pick, setPick] = useState("");
+  const verification = requirement.verification || {};
+  const wasReturned = verification.status === "returned";
 
   const load = async () => {
     try {
@@ -66,6 +68,18 @@ export default function RequirementEvidence({ requirement, onChanged }) {
 
   return (
     <div className="mt-3 border-t pt-3" data-testid={`req-evidence-${requirement.id}`}>
+      {wasReturned && (
+        <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 p-3" role="alert" data-testid={`fix-it-${requirement.id}`}>
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-700 mt-0.5" />
+            <div className="flex-1">
+              <div className="text-sm font-semibold text-rose-900">Staff returned this evidence for a correction.</div>
+              <p className="text-xs text-rose-800 mt-1">{verification.return_reason || "Please review the attached evidence and submit a clearer or updated document."}</p>
+              <Button size="sm" className="mt-2 bg-rose-800 hover:bg-rose-900 text-white" onClick={() => setPickerOpen(true)}>Fix it: add corrected evidence</Button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="overline">Evidence <span className="text-slate-400 normal-case font-normal">(attaching does not mark complete)</span></div>
         <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)} data-testid={`add-evidence-${requirement.id}`}>
