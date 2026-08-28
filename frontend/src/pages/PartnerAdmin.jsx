@@ -6,15 +6,36 @@ import { Building2, ClipboardCheck, ExternalLink, ShieldCheck, Users } from "luc
 const STAFF_ROLES = new Set(["super_admin", "program_admin", "program_staff", "case_manager", "reviewer"]);
 
 export default function PartnerAdmin() {
-  const [state, setState] = useState({ loading: true, allowed: false, user: null });
+  const [state, setState] = useState({ loading: true, allowed: false, user: null, participation: null });
 
   useEffect(() => {
     api.get("/auth/me")
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         const roles = (data.memberships || []).map((item) => item.role);
-        setState({ loading: false, allowed: roles.some((role) => STAFF_ROLES.has(role)), user: data });
+        const allowed = roles.some((role) => STAFF_ROLES.has(role));
+        if (!allowed) {
+          setState({ loading: false, allowed: false, user: data, participation: null });
+          return;
+        }
+        try {
+          const journey = await api.get("/admin/journey");
+          const rows = journey.data.participants || [];
+          setState({
+            loading: false,
+            allowed: true,
+            user: data,
+            participation: {
+              participants: rows.length,
+              building: rows.filter((row) => ["enter", "build"].includes(row.stage)).length,
+              graduated: rows.filter((row) => row.graduation_approved).length,
+              continuing: rows.filter((row) => row.interested_in_continuing === true).length,
+            },
+          });
+        } catch {
+          setState({ loading: false, allowed: true, user: data, participation: null });
+        }
       })
-      .catch(() => setState({ loading: false, allowed: false, user: null }));
+      .catch(() => setState({ loading: false, allowed: false, user: null, participation: null }));
   }, []);
 
   if (state.loading) return <div className="text-slate-500">Loading partner administration…</div>;
@@ -48,6 +69,15 @@ export default function PartnerAdmin() {
         </p>
       </section>
 
+      {state.participation && (
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3" aria-label="Participation summary">
+          <Metric label="Assigned participants" value={state.participation.participants} />
+          <Metric label="Building" value={state.participation.building} />
+          <Metric label="Graduated" value={state.participation.graduated} />
+          <Metric label="Interested in BBC" value={state.participation.continuing} />
+        </section>
+      )}
+
       <div className="grid md:grid-cols-3 gap-4">
         <Door icon={Users} title="Participant caseload"
           body="See only participants assigned to your organization and program. Private journals, health details, Support Circle contacts, and unrelated documents remain excluded."
@@ -74,7 +104,7 @@ export default function PartnerAdmin() {
   );
 }
 
-function Door({ icon: Icon, title, body, to, href, action }) {
+function Metric({ label, value }) {\n  return <div className="rounded-2xl border border-[#E4CDBF] bg-white p-4"><div className="text-xs uppercase tracking-wider text-slate-500">{label}</div><div className="font-display text-3xl text-[#1B1033] mt-1">{value}</div></div>;\n}\n\nfunction Door({ icon: Icon, title, body, to, href, action }) {
   const className = "rounded-2xl border border-[#E4CDBF] bg-white p-5 shadow-sm flex flex-col";
   const actionClass = "mt-auto pt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#4a2a5a]";
   return (
