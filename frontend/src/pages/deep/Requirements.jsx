@@ -27,14 +27,14 @@ const TYPES = [
   { v: "employment", l: "Employment requirement", icon: ClipboardList },
   { v: "other", l: "Other", icon: ClipboardList },
 ];
-const RECURR = ["one-time", "daily", "weekly", "biweekly", "monthly", "random"];
+const FINANCIAL_TYPES = new Set(["restitution", "fees"]);\nconst RECURR = ["one-time", "daily", "weekly", "biweekly", "monthly", "random"];
 const STATUSES = ["open", "in_progress", "done", "waived"];
 
 export default function Requirements() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ type: "check_in", description: "", agency: "", person: "", start_date: "", due_date: "", recurrence: "one-time",
-    status: "open", amount_due: "", amount_paid: "", appointment_at: "", notes: "", reminder_days_before: 1 });
+    status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", appointment_at: "", notes: "", reminder_days_before: 1 });
 
   const load = async () => setItems((await api.get("/requirements")).data);
   useEffect(() => { load(); }, []);
@@ -42,11 +42,11 @@ export default function Requirements() {
   const save = async (e) => {
     e.preventDefault();
     const payload = {...f};
-    ["amount_due","amount_paid"].forEach((k)=>{ payload[k] = payload[k] === "" ? null : Number(payload[k]); });
+    ["amount_due","amount_paid","total_hours","completed_hours"].forEach((k)=>{ payload[k] = payload[k] === "" ? null : Number(payload[k]); });\n    if (!FINANCIAL_TYPES.has(payload.type)) { payload.amount_due = null; payload.amount_paid = null; }\n    if (payload.type !== "community_service") { payload.total_hours = null; payload.completed_hours = null; payload.service_location = ""; payload.service_contact = ""; }
     await api.post("/requirements", payload);
     toast.success("Requirement saved");
     setOpen(false); setF({ type: "check_in", description: "", agency: "", person: "", start_date: "", due_date: "", recurrence: "one-time",
-      status: "open", amount_due: "", amount_paid: "", appointment_at: "", notes: "", reminder_days_before: 1 });
+      status: "open", amount_due: "", amount_paid: "", total_hours: "", completed_hours: "", service_location: "", service_contact: "", appointment_at: "", notes: "", reminder_days_before: 1 });
     await load();
   };
   const updateStatus = async (id, status) => { await api.patch(`/requirements/${id}`, { status }); await load(); };
@@ -146,11 +146,21 @@ export default function Requirements() {
                     </Select>
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div><Label>Amount due</Label><Input value={f.amount_due} onChange={(e) => setF({...f, amount_due: e.target.value})} placeholder="$" /></div>
-                  <div><Label>Amount paid</Label><Input value={f.amount_paid} onChange={(e) => setF({...f, amount_paid: e.target.value})} placeholder="$" /></div>
-                  <div><Label>Appointment</Label><Input type="datetime-local" value={f.appointment_at} onChange={(e) => setF({...f, appointment_at: e.target.value})} /></div>
-                </div>
+                {FINANCIAL_TYPES.has(f.type) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Amount due</Label><Input type="number" min="0" step="0.01" value={f.amount_due} onChange={(e) => setF({...f, amount_due: e.target.value})} placeholder="$" /></div>
+                    <div><Label>Amount paid</Label><Input type="number" min="0" step="0.01" value={f.amount_paid} onChange={(e) => setF({...f, amount_paid: e.target.value})} placeholder="$" /></div>
+                  </div>
+                )}
+                {f.type === "community_service" && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Total hours required</Label><Input type="number" min="0" step="0.25" value={f.total_hours} onChange={(e) => setF({...f, total_hours: e.target.value})} /></div>
+                    <div><Label>Hours completed</Label><Input type="number" min="0" step="0.25" value={f.completed_hours} onChange={(e) => setF({...f, completed_hours: e.target.value})} /></div>
+                    <div><Label>Service location</Label><Input value={f.service_location} onChange={(e) => setF({...f, service_location: e.target.value})} /></div>
+                    <div><Label>Service contact</Label><Input value={f.service_contact} onChange={(e) => setF({...f, service_contact: e.target.value})} /></div>
+                  </div>
+                )}
+                <div><Label>Appointment</Label><Input type="datetime-local" value={f.appointment_at} onChange={(e) => setF({...f, appointment_at: e.target.value})} /></div>
                 <div><Label>Notes</Label><Textarea value={f.notes} onChange={(e) => setF({...f, notes: e.target.value})} /></div>
                 <DialogFooter><Button type="submit" className="rounded-full bg-[#1B1033] hover:bg-[#2A1848] text-white" data-testid="req-save-btn">Save</Button></DialogFooter>
               </form>
@@ -183,7 +193,7 @@ export default function Requirements() {
                         <div className="mt-3 text-xs text-slate-500 grid grid-cols-2 gap-2">
                           {r.due_date && <div>Due: <span className="text-[#1B1033]">{r.due_date}</span></div>}
                           {r.recurrence && <div>Recurrence: {r.recurrence}</div>}
-                          {(r.amount_due || 0) > 0 && <div className="col-span-2">Paid: ${Number(r.amount_paid || 0).toFixed(2)} of ${Number(r.amount_due).toFixed(2)} (balance ${bal.toFixed(2)})</div>}
+                          {FINANCIAL_TYPES.has(r.type) && (r.amount_due || 0) > 0 && <div className="col-span-2">Paid: ${Number(r.amount_paid || 0).toFixed(2)} of ${Number(r.amount_due).toFixed(2)} (balance ${bal.toFixed(2)})</div>}\n                          {r.type === "community_service" && <div className="col-span-2">Hours: {Number(r.completed_hours || 0).toFixed(1)} of {Number(r.total_hours || 0).toFixed(1)} completed ({Math.max(0, Number(r.total_hours || 0) - Number(r.completed_hours || 0)).toFixed(1)} remaining)</div>}
                           {r.appointment_at && <div className="col-span-2">Appointment: {r.appointment_at.replace("T", " ")}</div>}
                         </div>
                         {r.notes && <div className="mt-2 text-xs text-slate-500 italic">"{r.notes}"</div>}
