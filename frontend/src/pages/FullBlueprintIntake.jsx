@@ -23,26 +23,30 @@ export default function FullBlueprintIntake() {
   const [progress, setProgress] = useState({ pct: 0, current_section: null, completed_at: null });
   const [sectionIdx, setSectionIdx] = useState(0);
   const [summary, setSummary] = useState(null);
+  const [error, setError] = useState("");
 
-  useEffect(() => { (async () => {
+  const loadBlueprint = async () => {
+    setError("");
     try {
       const [sch, st] = await Promise.all([
         api.get("/blueprint-intake/schema"),
         api.get("/blueprint-intake/state"),
       ]);
-      setSchema(sch.data.sections);
+      setSchema(sch.data.sections || []);
       setProgress(st.data.progress);
       const map = {};
       (st.data.answers || []).forEach((a) => { map[`${a.section}.${a.key}`] = a; });
       setAnswers(map);
       if (st.data.progress?.current_section) {
-        const i = sch.data.sections.findIndex((x) => x.id === st.data.progress.current_section);
+        const i = (sch.data.sections || []).findIndex((x) => x.id === st.data.progress.current_section);
         if (i >= 0) setSectionIdx(i);
       }
     } catch (e) {
+      setError(e?.response?.data?.detail || "Your Blueprint could not be loaded.");
       toast.error("Could not load your Full Blueprint");
     }
-  })(); }, []);
+  };
+  useEffect(() => { loadBlueprint(); }, []);
 
   const section = schema[sectionIdx];
   const total = useMemo(() => schema.reduce((s, x) => s + x.questions.length, 0), [schema]);
@@ -70,6 +74,7 @@ export default function FullBlueprintIntake() {
   };
 
   if (summary) return <SummaryView summary={summary} onReturn={() => nav("/app/blueprint")} />;
+  if (error) return <div className="max-w-xl mx-auto bmb-card p-8"><h1 className="font-display text-2xl text-[#1B1033]">We could not load your Blueprint.</h1><p className="text-slate-600 mt-2">{error}</p><Button className="mt-5 bg-[#4a2a5a] hover:bg-[#3a1e4a]" onClick={loadBlueprint}>Try again</Button></div>;
   if (!section) return <div className="p-8 text-slate-500">Loading your Blueprint…</div>;
 
   return (

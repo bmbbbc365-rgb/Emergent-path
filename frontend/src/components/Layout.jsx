@@ -40,6 +40,9 @@ export default function Layout({ children }) {
     if (p.get("bridge")) setBridgeOpen(true);
   }, [location]);
 
+  // Close the mobile drawer after navigation so it never traps the participant.
+  React.useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
   const Sidebar = (
     <aside
       className="w-72 flex flex-col h-full text-white relative overflow-hidden"
@@ -55,7 +58,7 @@ export default function Layout({ children }) {
         <button
           className="lg:hidden text-white/70 hover:text-white"
           onClick={() => setMobileOpen(false)}
-          data-testid="sidebar-close-btn"
+          data-testid="sidebar-close-btn" aria-label="Close navigation"
         ><X className="w-5 h-5" /></button>
       </div>
 
@@ -71,8 +74,8 @@ export default function Layout({ children }) {
         <div className="pt-3 mt-3 border-t border-white/10 space-y-1">
           <NavItem to="/app/library" icon={Library} label="Learn & Resources" testId="nav-library" />
           <NavItem to="/app/privacy" icon={Lock} label="Privacy & Sharing" testId="nav-privacy" />
-          {(user?.memberships || []).some((m) => ["super_admin", "program_admin", "program_staff"].includes(m?.role)) && (
-            <NavItem to="/staff/journey" icon={Users} label="Staff · Journey" testId="nav-admin-journey" />
+          {(user?.memberships || []).some((m) => ["super_admin", "program_admin", "program_staff", "case_manager", "reviewer"].includes(m?.role)) && (
+            <NavItem to="/partner-admin" icon={Users} label="Partner Administration" testId="nav-partner-admin" />
           )}
         </div>
       </nav>
@@ -92,7 +95,7 @@ export default function Layout({ children }) {
           <button
             className="text-white/60 hover:text-white p-1.5"
             onClick={doLogout}
-            data-testid="logout-btn"
+            data-testid="logout-btn" aria-label="Sign out"
             title="Sign out"
           ><LogOut className="w-4 h-4" /></button>
         </div>
@@ -134,7 +137,7 @@ export default function Layout({ children }) {
               <button
                 className="lg:hidden p-2 -ml-2 rounded-md hover:bg-[#F3E1D8]"
                 onClick={() => setMobileOpen(true)}
-                data-testid="sidebar-open-btn"
+                data-testid="sidebar-open-btn" aria-label="Open navigation"
               ><Menu className="w-5 h-5" /></button>
               <div>
                 <div className="overline">A Path Forward</div>

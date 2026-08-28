@@ -200,7 +200,7 @@ export function StaffParticipantDetail() {
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => { setOpenReq(null); setEvidence(null); }}>Cancel</Button>
-            <Button onClick={submitDecision} data-testid="staff-submit-decision">
+            <Button disabled={decision === "returned" && !reason.trim()} onClick={submitDecision} data-testid="staff-submit-decision">
               {decision === "verified" ? <><Check className="w-4 h-4 mr-1" /> Verify</> :
                decision === "returned" ? <><CornerUpLeft className="w-4 h-4 mr-1" /> Return</> :
                `Mark ${decision.replace(/_/g," ")}`}

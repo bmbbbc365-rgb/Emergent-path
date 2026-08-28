@@ -364,7 +364,11 @@ crud_endpoints("support-circle", "support_contacts", ["name", "role", "category"
 # ---------- Requirements ----------
 crud_endpoints("requirements", "requirements",
     ["type", "description", "agency", "person", "start_date", "due_date", "recurrence", "status",
-     "amount_due", "amount_paid", "appointment_at", "notes", "reminder_days_before", "document_ids"], sort_field="due_date", sort_dir=1)
+     "amount_due", "amount_paid", "total_hours", "completed_hours", "service_location", "service_contact",
+     "testing_provider", "testing_location", "monitor_provider", "device_model", "current_charge",
+     "last_charged_at", "monitor_instructions", "monitor_fee", "officer_phone", "officer_email",
+     "reporting_method", "reporting_instructions", "curfew_time", "curfew_days", "restriction_details",
+     "appointment_at", "notes", "reminder_days_before", "document_ids"], sort_field="due_date", sort_dir=1)
 
 
 # ---------- Medications / Conditions / Appointments / Wellness ----------
@@ -537,7 +541,16 @@ async def list_documents(section: Optional[str] = None, category: Optional[str] 
     q = {"user_id": user["user_id"], "is_deleted": False}
     if section: q["section"] = section
     if category: q["category"] = category
-    return await db.documents.find(q, {"_id": 0}).sort("uploaded_at", -1).to_list(1000)
+    rows = await db.documents.find(q, {"_id": 0}).sort("uploaded_at", -1).to_list(1000)
+    # Preserve legacy records in storage, but do not expose known zero-byte
+    # signed-URL test artifacts in the participant Vault.
+    return [
+        row for row in rows
+        if not (
+            int(row.get("size") or 0) == 0
+            and str(row.get("label") or "").strip().lower() == "signed-url-test"
+        )
+    ]
 
 
 @api_router.post("/documents/upload")
@@ -549,14 +562,26 @@ async def upload_document(
     user: dict = Depends(current_user),
 ):
     data = await file.read()
+    content_type = (file.content_type or "application/octet-stream").lower()
+    allowed_types = {
+        "application/pdf", "image/jpeg", "image/png", "image/webp",
+        "image/heic", "image/heif",
+    }
+    max_bytes = 25 * 1024 * 1024
+    if not data:
+        raise HTTPException(400, "The selected file is empty")
+    if len(data) > max_bytes:
+        raise HTTPException(413, "File is larger than the 25 MB limit")
+    if content_type not in allowed_types:
+        raise HTTPException(415, "Upload a PDF or supported image file")
     ext = (file.filename or "file").split(".")[-1].lower() if "." in (file.filename or "") else "bin"
     path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4().hex}.{ext}"
-    result = put_object(path, data, file.content_type or "application/octet-stream")
+    result = put_object(path, data, content_type)
     doc = {
         "id": new_id("doc_"), "user_id": user["user_id"],
         "section": section, "category": category,
         "label": label or file.filename, "storage_path": result["path"],
-        "original_filename": file.filename, "content_type": file.content_type or "application/octet-stream",
+        "original_filename": file.filename, "content_type": content_type,
         "size": result.get("size", len(data)), "is_deleted": False, "uploaded_at": now_iso(),
     }
     await db.documents.insert_one(doc); doc.pop("_id", None); return doc
@@ -1478,12 +1503,14 @@ async def dashboard_summary(user: dict = Depends(current_user)):
         {"_id": 0},
     ).sort("due_date", 1).limit(6).to_list(6)
 
-    docs_count = await db.documents.count_documents({"user_id": uid, "is_deleted": False})
+    doc_rows = await db.documents.find({"user_id": uid, "is_deleted": False}, {"_id": 0, "size": 1, "label": 1}).to_list(2000)
+    docs_count = sum(1 for d in doc_rows if not (int(d.get("size") or 0) == 0 and str(d.get("label") or "").strip().lower() == "signed-url-test"))
 
     # Requirements snapshot
     reqs = await db.requirements.find({"user_id": uid}, {"_id": 0}).to_list(500)
-    req_paid = sum((r.get("amount_paid") or 0) for r in reqs)
-    req_owed = sum(max(0, (r.get("amount_due") or 0) - (r.get("amount_paid") or 0)) for r in reqs)
+    financial_reqs = [r for r in reqs if r.get("type") in ("restitution", "fees")]
+    req_paid = sum(min((r.get("amount_paid") or 0), (r.get("amount_due") or 0)) for r in financial_reqs)
+    req_owed = sum(max(0, (r.get("amount_due") or 0) - (r.get("amount_paid") or 0)) for r in financial_reqs)
     req_next = sorted([r for r in reqs if r.get("due_date")], key=lambda r: r["due_date"])[:5]
 
     # Appointments soon
@@ -1512,7 +1539,11 @@ async def dashboard_summary(user: dict = Depends(current_user)):
         done = await db.tasks.count_documents({"user_id": uid, "section": section, "status": "done"})
         section_progress[section] = {"total": total, "done": done, "pct": round((done / total) * 100) if total else 0}
 
+    from progress_summary import compute_progress_summary
+    canonical_progress = await compute_progress_summary(uid)
+
     return {
+        "progress": canonical_progress,
         "tasks": {"total": total_tasks, "done": done_tasks, "pct": round(done_tasks / total_tasks * 100) if total_tasks else 0},
         "required": {"total": required_total, "open": required_open, "done": required_total - required_open,
                      "pct": round((required_total - required_open) / required_total * 100) if required_total else 0},
@@ -1559,7 +1590,8 @@ async def build_bridge_context(user: dict) -> str:
     s = await dashboard_summary(user)
     lines = [
         f"Participant: {user.get('name', 'the participant')} · Email: {user.get('email')}",
-        f"Overall required tasks: {s['required']['done']}/{s['required']['total']} complete.",
+        f"Overall Blueprint progress: {s['progress']['overall']['completed']}/{s['progress']['overall']['total']} complete ({s['progress']['overall']['percent']}%).",
+        f"Release requirements: {s['progress']['requirements']['completed']}/{s['progress']['requirements']['total']} complete.",
         f"Documents saved: {s['documents_count']}. Active benefits on file: {s['benefits']['active']}. "
         f"Medications: {s['health']['medications']}. Conditions: {s['health']['conditions']}. "
         f"Active jobs: {s['employment']['active_jobs']}. Open applications: {s['employment']['open_applications']}.",
@@ -2541,6 +2573,48 @@ async def list_programs(user: dict = Depends(require_role("super_admin", "progra
     return await db.programs.find({"id": {"$in": list(prog_ids)}}, {"_id": 0}).to_list(200)
 
 
+class ProgramConfigIn(BaseModel):
+    verification_required_types: list[str] = Field(default_factory=list)
+    invitation_expiry_days: int = 14
+
+
+@api_router.patch("/programs/{program_id}/config")
+async def update_program_config(
+    program_id: str,
+    body: ProgramConfigIn,
+    user: dict = Depends(require_role("super_admin", "program_admin")),
+):
+    """Update only the production-safe configuration exposed in Partner Administration."""
+    program = await db.programs.find_one({"id": program_id}, {"_id": 0})
+    if not program:
+        raise HTTPException(404, "Program not found")
+    if user["_effective_role"] != "super_admin":
+        allowed = any(
+            b.get("program_id") == program_id and b.get("role") == "program_admin"
+            for b in user["_bindings"]
+        )
+        if not allowed:
+            raise HTTPException(403, "Not an admin of that program")
+    if not 1 <= body.invitation_expiry_days <= 90:
+        raise HTTPException(400, "Invitation expiry must be between 1 and 90 days")
+    allowed_types = {"release_order", "supervision_plan", "identity", "employment", "housing", "benefits", "education", "other"}
+    invalid = set(body.verification_required_types) - allowed_types
+    if invalid:
+        raise HTTPException(400, f"Unsupported verification type: {sorted(invalid)[0]}")
+    before = program.get("config") or {}
+    config = {
+        **before,
+        "verification_required_types": sorted(set(body.verification_required_types)),
+        "invitation_expiry_days": body.invitation_expiry_days,
+    }
+    await db.programs.update_one({"id": program_id}, {"$set": {"config": config, "updated_at": now_iso()}})
+    await _audit(
+        user["user_id"], user["_effective_role"], program.get("org_id"),
+        "program.config_update", "program", program_id, before, config,
+    )
+    return await db.programs.find_one({"id": program_id}, {"_id": 0})
+
+
 # ---------- Invitations ----------
 class InvitationIn(BaseModel):
     email: EmailStr
@@ -2562,12 +2636,14 @@ async def create_invitation(body: InvitationIn, user: dict = Depends(require_rol
         if not allowed:
             raise HTTPException(403, "Not an admin of that program")
     code = f"{program.get('code','APF')}-{uuid.uuid4().hex[:8].upper()}"
+    expiry_days = int((program.get("config") or {}).get("invitation_expiry_days") or 14)
+    expiry_days = min(90, max(1, expiry_days))
     doc = {
         "id": new_id("inv_"), "org_id": program["org_id"], "program_id": body.program_id,
         "invited_email": body.email.lower(), "invited_name": body.name,
         "invited_role": body.role, "pathway_code": code,
         "created_by": user["user_id"], "created_at": now_iso(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(days=14)).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(days=expiry_days)).isoformat(),
         "status": "pending", "accepted_user_id": None,
     }
     await db.invitations.insert_one(doc)
@@ -2761,6 +2837,8 @@ async def staff_verify_requirement(req_id: str, body: VerifyIn,
                                     user: dict = Depends(require_role("super_admin", "program_admin", "program_staff"))):
     if body.decision not in {"verified", "returned", "needs_review", "not_applicable"}:
         raise HTTPException(400, "Invalid decision")
+    if body.decision == "returned" and not (body.reason or "").strip():
+        raise HTTPException(400, "A clear return reason is required")
     req = await db.requirements.find_one({"id": req_id}, {"_id": 0})
     if not req: raise HTTPException(404, "Not found")
     if not await _staff_can_access_participant(user, req["user_id"]):
@@ -2768,7 +2846,7 @@ async def staff_verify_requirement(req_id: str, body: VerifyIn,
     before = req.get("verification") or {}
     ver = {**before, "status": body.decision, "verified_by": user["user_id"],
            "verifier_role": user["_effective_role"], "verified_at": now_iso(),
-           "return_reason": body.reason if body.decision == "returned" else before.get("return_reason")}
+           "return_reason": body.reason.strip() if body.decision == "returned" else before.get("return_reason")}
     upd = {"verification": ver}
     if body.decision == "verified":
         upd["status"] = "done"
@@ -3040,11 +3118,16 @@ _resources_v2.register(
 )
 
 
+# ============= CANONICAL PARTICIPANT PROGRESS =============
+import progress_summary as _progress_summary  # noqa: E402
+_progress_summary.register(db, api_router, current_user)
+
+
 # ============= GRADUATION JOURNEY & BUILD MY BLUEPRINT™ DOORWAY =============
 import journey as _journey  # noqa: E402
 _journey.register(
     db, api_router, current_user, require_role,
-    now_iso, new_id, _audit,
+    now_iso, new_id, _audit, _staff_can_access_participant,
 )
 
 
