@@ -40,6 +40,9 @@ export default function Layout({ children }) {
     if (p.get("bridge")) setBridgeOpen(true);
   }, [location]);
 
+  // Close the mobile drawer after navigation so it never traps the participant.
+  React.useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+
   const Sidebar = (
     <aside
       className="w-72 flex flex-col h-full text-white relative overflow-hidden"
