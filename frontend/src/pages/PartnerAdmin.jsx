@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import api from "@/lib/api";
 import { Building2, ClipboardCheck, ExternalLink, ShieldCheck, Users } from "lucide-react";
 
-const STAFF_ROLES = new Set(["super_admin", "program_admin", "case_manager", "reviewer"]);
+const STAFF_ROLES = new Set(["super_admin", "program_admin", "program_staff", "case_manager", "reviewer"]);
 
 export default function PartnerAdmin() {
   const [state, setState] = useState({ loading: true, allowed: false, user: null });
