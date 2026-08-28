@@ -30,7 +30,8 @@ const TYPES = [
   { v: "employment", l: "Employment requirement", icon: ClipboardList },
   { v: "other", l: "Other", icon: ClipboardList },
 ];
-const FINANCIAL_TYPES = new Set(["restitution", "fees"]);\nconst RECURR = ["one-time", "daily", "weekly", "biweekly", "monthly", "random"];
+const FINANCIAL_TYPES = new Set(["restitution", "fees"]);
+const RECURR = ["one-time", "daily", "weekly", "biweekly", "monthly", "random"];
 const STATUSES = ["open", "in_progress", "done", "waived"];
 
 export default function Requirements() {
@@ -45,7 +46,9 @@ export default function Requirements() {
   const save = async (e) => {
     e.preventDefault();
     const payload = {...f};
-    ["amount_due","amount_paid","total_hours","completed_hours"].forEach((k)=>{ payload[k] = payload[k] === "" ? null : Number(payload[k]); });\n    if (!FINANCIAL_TYPES.has(payload.type)) { payload.amount_due = null; payload.amount_paid = null; }\n    if (payload.type !== "community_service") { payload.total_hours = null; payload.completed_hours = null; payload.service_location = ""; payload.service_contact = ""; }
+    ["amount_due","amount_paid","total_hours","completed_hours"].forEach((k)=>{ payload[k] = payload[k] === "" ? null : Number(payload[k]); });
+    if (!FINANCIAL_TYPES.has(payload.type)) { payload.amount_due = null; payload.amount_paid = null; }
+    if (payload.type !== "community_service") { payload.total_hours = null; payload.completed_hours = null; payload.service_location = ""; payload.service_contact = ""; }
     await api.post("/requirements", payload);
     toast.success("Requirement saved");
     setOpen(false); setF({ type: "check_in", description: "", agency: "", person: "", start_date: "", due_date: "", recurrence: "one-time",
@@ -219,7 +222,8 @@ export default function Requirements() {
                         <div className="mt-3 text-xs text-slate-500 grid grid-cols-2 gap-2">
                           {r.due_date && <div>Due: <span className="text-[#1B1033]">{r.due_date}</span></div>}
                           {r.recurrence && <div>Recurrence: {r.recurrence}</div>}
-                          {FINANCIAL_TYPES.has(r.type) && (r.amount_due || 0) > 0 && <div className="col-span-2">Paid: ${Number(r.amount_paid || 0).toFixed(2)} of ${Number(r.amount_due).toFixed(2)} (balance ${bal.toFixed(2)})</div>}\n                          {r.type === "community_service" && <div className="col-span-2">Hours: {Number(r.completed_hours || 0).toFixed(1)} of {Number(r.total_hours || 0).toFixed(1)} completed ({Math.max(0, Number(r.total_hours || 0) - Number(r.completed_hours || 0)).toFixed(1)} remaining)</div>}
+                          {FINANCIAL_TYPES.has(r.type) && (r.amount_due || 0) > 0 && <div className="col-span-2">Paid: ${Number(r.amount_paid || 0).toFixed(2)} of ${Number(r.amount_due).toFixed(2)} (balance ${bal.toFixed(2)})</div>}
+                          {r.type === "community_service" && <div className="col-span-2">Hours: {Number(r.completed_hours || 0).toFixed(1)} of {Number(r.total_hours || 0).toFixed(1)} completed ({Math.max(0, Number(r.total_hours || 0) - Number(r.completed_hours || 0)).toFixed(1)} remaining)</div>}
                           {r.appointment_at && <div className="col-span-2">Appointment: {r.appointment_at.replace("T", " ")}</div>}
                         </div>
                         {r.notes && <div className="mt-2 text-xs text-slate-500 italic">"{r.notes}"</div>}
